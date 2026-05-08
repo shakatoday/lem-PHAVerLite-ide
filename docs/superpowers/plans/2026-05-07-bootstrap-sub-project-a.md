@@ -161,6 +161,18 @@ Create `config/init.lisp` with exactly this content:
 
 (in-package #:cl-user)
 
+;; Tell CFFI where to find native libs we built ourselves (see bin/build-deps).
+;; Must happen BEFORE (ql:quickload :lem-ncurses) — async-process loads its
+;; .dylib at compile time, so the search path needs to be set first.
+;; The PHAVERLITE_IDE_LIB env var is set by bin/phaverlite-ide; we read it
+;; rather than hardcoding the repo path so this file stays portable.
+(ql:quickload :cffi :silent t)
+(let ((libdir (uiop:getenv "PHAVERLITE_IDE_LIB")))
+  (when (and libdir (not (zerop (length libdir))))
+    (pushnew (uiop:ensure-directory-pathname libdir)
+             cffi:*foreign-library-directories*
+             :test #'equal)))
+
 (ql:quickload :lem-ncurses :silent t)
 
 ;; Verification banner — appears in *Messages* so we can confirm THIS init.lisp
@@ -177,20 +189,20 @@ Create `config/init.lisp` with exactly this content:
 
 - [ ] **Step 2: Sanity-check with sbcl directly (no launcher yet)**
 
-This step verifies that the file *parses* and reaches `(lem:lem)`. We will not actually run lem here — we'd be inside an interactive editor with no way to verify anything. Instead, load the file in a way that stops before `(lem:lem)`:
+This step verifies the file parses and CFFI/quickload work. We do NOT call `(lem:lem)` here (would take over the terminal); instead, load only the part before `(lem:lem)`.
 
 Run:
 ```bash
-qlot exec sbcl --no-userinit --no-sysinit \
-  --eval '(handler-case (load "config/init.lisp") (error (c) (format t "~&[parse-fail] ~a~%" c) (uiop:quit 1)))' \
-  --eval '(uiop:quit 0)' 2>&1 | head -20
+PHAVERLITE_IDE_LIB="$PWD/var/lib" qlot exec sbcl --no-userinit --no-sysinit \
+  --eval '(ql:quickload :cffi :silent t)' \
+  --eval "(let ((libdir (uiop:getenv \"PHAVERLITE_IDE_LIB\"))) (when libdir (pushnew (uiop:ensure-directory-pathname libdir) cffi:*foreign-library-directories* :test #'equal)))" \
+  --eval '(ql:quickload :lem-ncurses :silent t)' \
+  --eval '(format t "~&[init-parse-ok] lem-ncurses loaded, lem:lem fbound: ~a~%" (and (find-symbol "LEM" :lem) (fboundp (find-symbol "LEM" :lem))))' \
+  --eval '(uiop:quit 0)' 2>&1 | tail -3
 ```
+Expected: `[init-parse-ok] lem-ncurses loaded, lem:lem fbound: T`. If you see a CFFI dlopen error for `libasyncprocess.dylib`, you forgot to run `bin/build-deps` after `qlot install` — go run it.
 
-Expected: lem starts taking over the terminal (because `(lem:lem)` was reached). You will need to **kill the process** with `Ctrl-C` or close the terminal — that's fine for this step. The presence of lem starting confirms the file is valid; we'll do the real test via the launcher in Task 4.
-
-If you see `[parse-fail] ...` instead, the file has a syntax error — fix it.
-
-(There is no automated assertion for this step. We accept the manual check; the real DoD is exercised in Task 5.)
+This validates the same sequence of forms that `config/init.lisp` will execute, just without launching the editor. The actual `(lem:lem)` call is exercised in Task 4 Step 4.
 
 - [ ] **Step 3: Commit**
 
@@ -242,6 +254,11 @@ if [[ ! -d "$REPO/.qlot" ]]; then
   print -u2 "phaverlite-ide: $REPO/.qlot/ missing. Run 'qlot install' first."
   exit 1
 fi
+if [[ ! -f "$REPO/var/lib/libasyncprocess.dylib" ]]; then
+  print -u2 "phaverlite-ide: $REPO/var/lib/libasyncprocess.dylib missing."
+  print -u2 "                Run 'bin/build-deps' after 'qlot install'."
+  exit 1
+fi
 if [[ ! -f "$REPO/config/init.lisp" ]]; then
   print -u2 "phaverlite-ide: $REPO/config/init.lisp missing."
   exit 1
@@ -258,6 +275,9 @@ export LEM_HOME="$REPO/var/lem"
 export XDG_CONFIG_HOME="$REPO/var/xdg-config"
 export XDG_DATA_HOME="$REPO/var/xdg-data"
 export XDG_CACHE_HOME="$REPO/var/xdg-cache"
+
+# Where config/init.lisp finds our hand-built native libs (libasyncprocess).
+export PHAVERLITE_IDE_LIB="$REPO/var/lib"
 
 # HOME is intentionally NOT remapped (would break ssh, git, terminal).
 
