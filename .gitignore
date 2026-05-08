@@ -8,6 +8,9 @@ ps3/
 .qlot/
 .bundle-libs/
 
+# Local Claude Code session state — per-machine, never published.
+.claude/
+
 # Compiled Lisp artifacts.
 *.fasl
 *.fasl.gz
