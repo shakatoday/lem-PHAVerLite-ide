@@ -55,12 +55,14 @@ if [[ -f "$REPO/var/lem.core" ]]; then
   exec qlot exec sbcl \
     --core "$REPO/var/lem.core" \
     --no-userinit \
-    --no-sysinit
+    --no-sysinit \
+    --noinform
 else
   print -u2 "phaverlite-ide: var/lem.core not found; launching from source (~8s)."
   print -u2 "                Run 'bin/build-image' for fast launches."
   exec qlot exec sbcl \
     --no-userinit \
     --no-sysinit \
+    --noinform \
     --load "config/init.lisp"
 fi
