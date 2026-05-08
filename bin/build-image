@@ -1,0 +1,48 @@
+#!/usr/bin/env zsh
+# bin/build-image — pre-load lem-ncurses into an SBCL image for fast launch.
+#
+# Without an image, every launch pays ~8s for `(ql:quickload :lem-ncurses)`
+# (ASDF walk + ~1500 FASL loads). With an image, SBCL memory-maps the heap
+# and starts in well under 1 second.
+#
+# Mirrors lem upstream's own scripts/build-ncurses.lisp recipe:
+# quickload lem-ncurses → (lem:init-at-build-time) → save-lisp-and-die.
+#
+# Output: var/lem.core (gitignored). Re-run after any qlot install or after
+# editing config/init.lisp's pre-launch setup.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [[ ! -d "$REPO/.qlot" ]]; then
+  print -u2 "build-image: $REPO/.qlot/ missing. Run 'qlot install' first."
+  exit 1
+fi
+if [[ ! -f "$REPO/var/lib/libasyncprocess.dylib" ]]; then
+  print -u2 "build-image: $REPO/var/lib/libasyncprocess.dylib missing."
+  print -u2 "             Run 'bin/build-deps' first."
+  exit 1
+fi
+
+mkdir -p "$REPO/var"
+CORE="$REPO/var/lem.core"
+
+print "build-image: dumping lem-ncurses image to $CORE..."
+print "             (~30-60s; only needed once after qlot install or build-deps changes.)"
+
+PHAVERLITE_IDE_LIB="$REPO/var/lib" \
+XDG_CACHE_HOME="$REPO/var/xdg-cache" \
+qlot exec sbcl --no-userinit --no-sysinit \
+  --eval '(ql:quickload :cffi :silent t)' \
+  --eval "(let ((libdir (uiop:getenv \"PHAVERLITE_IDE_LIB\"))) (when libdir (pushnew (uiop:ensure-directory-pathname libdir) cffi:*foreign-library-directories* :test #'equal)))" \
+  --eval '(ql:quickload :lem-ncurses :silent t)' \
+  --eval '(lem:init-at-build-time)' \
+  --eval "(defparameter cl-user::*phaverlite-ide-banner* \"[phaverlite-ide] sub-project A bootstrap loaded\")" \
+  --eval "(lem:add-hook lem:*after-init-hook* (lambda () (lem:message cl-user::*phaverlite-ide-banner*)))" \
+  --eval "(sb-ext:save-lisp-and-die \"$CORE\" :toplevel (lambda () (lem:lem) (uiop:quit 0)))"
+
+print ""
+print "build-image: done. Output:"
+ls -lh "$CORE"
