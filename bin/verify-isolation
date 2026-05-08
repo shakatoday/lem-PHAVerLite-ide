@@ -13,7 +13,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Paths we promise NOT to write to.
+# Paths we promise NOT to write to. typeset -a forces array semantics in
+# case WATCH is already declared as a scalar in the user's environment.
+typeset -a WATCH
 WATCH=(
   "$HOME/.config/lem"
   "$HOME/.cache/lem"
