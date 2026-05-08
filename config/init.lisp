@@ -28,3 +28,8 @@
               (lambda () (lem:message *phaverlite-ide-banner*)))
 
 (lem:lem)
+
+;; (lem:lem) returns when the user quits lem; without this, SBCL would drop
+;; into its REPL and keep the launcher hung. Make the launcher behave like
+;; a normal program: shell prompt → C-x C-c in lem → back to shell prompt.
+(uiop:quit 0)
