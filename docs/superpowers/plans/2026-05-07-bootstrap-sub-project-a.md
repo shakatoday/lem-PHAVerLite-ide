@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-07-bootstrap-sub-project-a-design.md`
 
-**Working directory for all commands:** the repo root, `<repo-root>`. (Engineer should `cd` there once at the start; subsequent paths in this plan are repo-relative unless prefixed with `/`.)
+**Working directory for all commands:** the repo root (this directory). Engineer should `cd` there once at the start; subsequent paths in this plan are repo-relative unless prefixed with `/`.
 
 **Privacy reminder:** This is a public GitHub repo. Per `CLAUDE.md`:
 - Never write `/Users/...` or `/home/...` paths into tracked files. Use `$HOME`, `~`, or repo-relative paths.
