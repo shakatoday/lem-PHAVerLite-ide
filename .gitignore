@@ -51,3 +51,8 @@ out_init
 # Vendored dependencies are NOT ignored by default — if we deliberately fork
 # lem (or anything else) into vendor/, it should be committed. Add specific
 # subpaths here only when needed.
+
+# Runtime state for the launcher (LEM_HOME, XDG_* dirs).
+# Reproducible per launch; never committed.
+var/*
+!var/.gitkeep
