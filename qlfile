@@ -1,0 +1,12 @@
+# qlfile — qlot manifest. Installs into ./.qlot/ via `qlot install`.
+# Pinned to a specific commit verified to build with qlot + ncurses on Mac.
+# To bump: re-run `git ls-remote https://github.com/lem-project/lem.git main`,
+# update the :ref below, run `qlot install`, smoke-test with bin/phaverlite-ide.
+ql uiop
+git lem https://github.com/lem-project/lem.git :ref f88ffd610b7c0ebcccf7451bc1ae5def314e3508
+git micros https://github.com/lem-project/micros.git :ref 2ec61c8d6028d219cc511a0e41d9228761c84251
+git lem-mailbox https://github.com/lem-project/lem-mailbox.git :ref 12d629541da440fadf771b0225a051ae65fa342a
+git async-process https://github.com/lem-project/async-process.git :ref 3ea46fcd238fdda101b644221ecf5e311c171a21
+git lem-extension-manager https://github.com/lem-project/lem-extension-manager.git :ref fac3dd4c65f75d1ec9dbae62bc9945f4c9ba63a3
+git jsonrpc https://github.com/cxxxr/jsonrpc.git :ref 42fa96ec34f6b6be77a6f12f7c4e84f375eff019
+git tree-sitter-cl https://github.com/lem-project/tree-sitter-cl.git :ref 431b572d0e49d64a78320cc5f4b4a90391024ce6

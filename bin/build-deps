@@ -1,0 +1,50 @@
+#!/usr/bin/env zsh
+# bin/build-deps — build native shared libraries that lem deps require.
+#
+# Currently builds: libasyncprocess.dylib (from async-process, a transitive
+# dep of lem-ncurses). The async-process package ships an autotools build,
+# but its only C source is a single ~130-line POSIX file with no extra deps,
+# so we bypass autotools entirely and compile directly with clang.
+#
+# Run after `qlot install` (or after a fresh clone), before bin/phaverlite-ide.
+# Idempotent: re-running rebuilds the .dylib in place.
+#
+# Output goes to var/lib/. The launcher / config/init.lisp arrange for CFFI
+# to find it via cffi:*foreign-library-directories*.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [[ ! -d "$REPO/.qlot" ]]; then
+  print -u2 "build-deps: $REPO/.qlot/ missing. Run 'qlot install' first."
+  exit 1
+fi
+
+# Locate async-process source. Path includes the pinned ref, so glob it.
+ASYNC_DIR=("$REPO"/.qlot/dists/async-process/software/async-process-ref-*(N))
+if (( ${#ASYNC_DIR} == 0 )); then
+  print -u2 "build-deps: cannot find async-process source under .qlot/dists/."
+  print -u2 "            Did 'qlot install' complete successfully?"
+  exit 1
+fi
+ASYNC_SRC="${ASYNC_DIR[1]}/src"
+
+if [[ ! -f "$ASYNC_SRC/async-process.c" ]]; then
+  print -u2 "build-deps: $ASYNC_SRC/async-process.c missing."
+  exit 1
+fi
+
+LIBDIR="$REPO/var/lib"
+mkdir -p "$LIBDIR"
+
+print "build-deps: compiling libasyncprocess.dylib..."
+clang -shared -fPIC -O2 \
+  -install_name "@rpath/libasyncprocess.dylib" \
+  -o "$LIBDIR/libasyncprocess.dylib" \
+  -I"$ASYNC_SRC" \
+  "$ASYNC_SRC/async-process.c"
+
+print "build-deps: done. Output:"
+ls -la "$LIBDIR/libasyncprocess.dylib"
