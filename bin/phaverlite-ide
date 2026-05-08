@@ -1,0 +1,54 @@
+#!/usr/bin/env zsh
+# bin/phaverlite-ide — launch lem-ncurses with project-local config.
+#
+# Sub-project A: env-isolated bootstrap. No $HOME writes; no SBCL user/system
+# init; no lem fallback to ~/.lem or ~/.config/lem.
+
+set -euo pipefail
+
+# Resolve repo root from this script's location (no hardcoded paths).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Friendly precondition checks.
+if ! command -v qlot >/dev/null 2>&1; then
+  print -u2 "phaverlite-ide: 'qlot' not found on PATH."
+  print -u2 "Install via Roswell: ros install fukamachi/qlot"
+  exit 1
+fi
+if [[ ! -d "$REPO/.qlot" ]]; then
+  print -u2 "phaverlite-ide: $REPO/.qlot/ missing. Run 'qlot install' first."
+  exit 1
+fi
+if [[ ! -f "$REPO/var/lib/libasyncprocess.dylib" ]]; then
+  print -u2 "phaverlite-ide: $REPO/var/lib/libasyncprocess.dylib missing."
+  print -u2 "                Run 'bin/build-deps' after 'qlot install'."
+  exit 1
+fi
+if [[ ! -f "$REPO/config/init.lisp" ]]; then
+  print -u2 "phaverlite-ide: $REPO/config/init.lisp missing."
+  exit 1
+fi
+
+# Env isolation: every per-user state path lives inside the repo.
+mkdir -p \
+  "$REPO/var/lem" \
+  "$REPO/var/xdg-config" \
+  "$REPO/var/xdg-data" \
+  "$REPO/var/xdg-cache"
+
+export LEM_HOME="$REPO/var/lem"
+export XDG_CONFIG_HOME="$REPO/var/xdg-config"
+export XDG_DATA_HOME="$REPO/var/xdg-data"
+export XDG_CACHE_HOME="$REPO/var/xdg-cache"
+
+# Where config/init.lisp finds our hand-built native libs (libasyncprocess).
+export PHAVERLITE_IDE_LIB="$REPO/var/lib"
+
+# HOME is intentionally NOT remapped (would break ssh, git, terminal).
+
+cd "$REPO"
+exec qlot exec sbcl \
+  --no-userinit \
+  --no-sysinit \
+  --load "config/init.lisp"
