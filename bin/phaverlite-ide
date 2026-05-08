@@ -52,17 +52,19 @@ cd "$REPO"
 # (sub-second startup). The image's toplevel calls (lem:lem) and (uiop:quit 0).
 # Slow path: load lem from source via config/init.lisp (~8s; dev fallback).
 if [[ -f "$REPO/var/lem.core" ]]; then
+  # --noinform must come BEFORE --core; SBCL processes runtime options in
+  # order and the saved core re-prints the banner if --noinform comes after.
   exec qlot exec sbcl \
+    --noinform \
     --core "$REPO/var/lem.core" \
     --no-userinit \
-    --no-sysinit \
-    --noinform
+    --no-sysinit
 else
   print -u2 "phaverlite-ide: var/lem.core not found; launching from source (~8s)."
   print -u2 "                Run 'bin/build-image' for fast launches."
   exec qlot exec sbcl \
+    --noinform \
     --no-userinit \
     --no-sysinit \
-    --noinform \
     --load "config/init.lisp"
 fi
