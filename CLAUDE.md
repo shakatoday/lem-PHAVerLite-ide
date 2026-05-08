@@ -149,6 +149,44 @@ a shell loop.
   feature must reproduce the row format of `Lab3/sweep_pc.sh`
   (`pc | result | cpu(s)`).
 
+## Privacy & security (this is a public repo)
+
+The repo is hosted publicly on GitHub. Treat every committed file as
+world-readable forever. Hard rules for anything that gets staged:
+
+- **No personal absolute paths.** Never write `/Users/<name>/...` or
+  `/home/<name>/...` into tracked files (scripts, configs, docs, code).
+  Use `$HOME`, `~`, or repo-relative paths. The launcher derives its own
+  location with `$(dirname "$0")` rather than hardcoding.
+- **No real names of collaborators, classmates, or instructors** in code,
+  docs, filenames, or commit messages. Use placeholders (e.g.
+  `chen_XXX.pha`) when referring to coursework files. Real-name files stay
+  in the gitignored `ps3/` and `Lab3/` directories.
+- **No coursework content.** `ps3/` and `Lab3/` (PDFs, sample `.pha`,
+  prior-attempt `out_*` files, classmate-named zips, install scripts that
+  may have been distributed under course terms) are gitignored. Do not
+  copy their contents into tracked files. The IDE may *read* them at
+  runtime; it must not bake them into source.
+- **No secrets, tokens, API keys, SSH keys, `.env` files** — even
+  placeholder ones. The `.gitignore` covers the obvious patterns; do not
+  override with `git add -f`.
+- **No identifying metadata leaks.** Don't commit `.DS_Store`, editor
+  swap files, shell history, or local caches. Don't put the developer's
+  email or machine hostname in scripts or docs.
+- **Generated outputs stay local.** PHAVerLite reachability dumps and
+  plot files are reproducible from the `.pha` source; they don't need to
+  be committed and may inadvertently contain absolute paths from
+  `phaverlite`'s working directory.
+- **Before every commit:** scan the diff for the rules above. A quick
+  `git diff --staged | grep -iE 'users/|/home/|@(icloud|gmail|umass)\.com|password|secret|token|api[_-]?key'`
+  is cheap insurance.
+
+If something sensitive does land in a commit, treat it as compromised:
+rotate the secret, and if it's already pushed, rewrite history with
+`git filter-repo` (or accept that it's public forever — git rewrites do
+not fully erase data on GitHub).
+
 ## Status
 
-Bootstrapping. Nothing built yet. CLAUDE.md is the first artifact.
+Bootstrapping. Nothing built yet. CLAUDE.md and `.gitignore` are the
+first artifacts.

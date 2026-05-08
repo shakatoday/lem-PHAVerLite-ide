@@ -1,2 +1,50 @@
+# Coursework / personal reference material — local only, never publish.
+# These directories may contain peer names, prior solutions, or distributed
+# materials that should not be on a public repo.
 Lab3/
 ps3/
+
+# qlot per-project install dir — reproducible from qlfile.lock, no need to commit.
+.qlot/
+.bundle-libs/
+
+# Compiled Lisp artifacts.
+*.fasl
+*.fasl.gz
+*.lx32fsl
+*.lx64fsl
+*.dx32fsl
+*.dx64fsl
+*.dfsl
+*.pfsl
+*.d64fsl
+*.p64fsl
+
+# Editor / OS junk.
+.DS_Store
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# Local environment / secrets — defense in depth, even though we don't expect any.
+.env
+.env.*
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Local PHAVerLite / plotutils run outputs (reproducible from the .pha source).
+/tmp_runs/
+*.out.tmp
+out_reach
+out_inv
+out_invar
+out_reachable
+out_init
+
+# Vendored dependencies are NOT ignored by default — if we deliberately fork
+# lem (or anything else) into vendor/, it should be committed. Add specific
+# subpaths here only when needed.
