@@ -13,10 +13,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Paths we promise NOT to write to. typeset -a forces array semantics in
-# case WATCH is already declared as a scalar in the user's environment.
-typeset -a WATCH
-WATCH=(
+# Paths we promise NOT to write to. Variable name is deliberately
+# specific (not WATCH or PATHS) to avoid colliding with zsh autoloaded
+# parameters or anything in the user's interactive environment.
+typeset -a watched_paths
+watched_paths=(
   "$HOME/.config/lem"
   "$HOME/.cache/lem"
   "$HOME/.lem"
@@ -27,7 +28,7 @@ WATCH=(
 snapshot() {
   local out=$1
   : > "$out"
-  for p in $WATCH; do
+  for p in $watched_paths; do
     if [[ -e "$p" ]]; then
       find "$p" -type f -exec stat -f '%m %N' {} + >> "$out" 2>/dev/null || true
     fi
