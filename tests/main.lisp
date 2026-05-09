@@ -177,3 +177,26 @@
                    (phaverlite-mode/sweep::parse-cpu-time output)))))
   (testing "parse-cpu-time → NIL when no such line"
     (ok (null (phaverlite-mode/sweep::parse-cpu-time "no timing here")))))
+
+(deftest sweep-range
+  (testing "(3.0 -0.05 1.0) produces 41 values starting 3.0 ending 1.0"
+    (let ((r (phaverlite-mode/sweep::generate-range 3.0 -0.05 1.0)))
+      (ok (= 41 (length r)))
+      (ok (= 3.0 (first r)))
+      ;; Floating-point: last value should be within step of 1.0.
+      (ok (< (abs (- 1.0 (car (last r)))) 1.0e-6))))
+  (testing "(1.0 0.5 3.0) produces 5 values"
+    (let ((r (phaverlite-mode/sweep::generate-range 1.0 0.5 3.0)))
+      (ok (= 5 (length r)))
+      (ok (= 1.0 (first r)))
+      (ok (= 3.0 (car (last r))))))
+  (testing "start = stop produces a single-element list"
+    (let ((r (phaverlite-mode/sweep::generate-range 2.0 0.5 2.0)))
+      (ok (= 1 (length r)))
+      (ok (= 2.0 (first r)))))
+  (testing "step = 0 raises an error"
+    (ok (signals (phaverlite-mode/sweep::generate-range 1.0 0.0 3.0))))
+  (testing "sign-mismatched step raises (start=3 step=+0.5 stop=1)"
+    (ok (signals (phaverlite-mode/sweep::generate-range 3.0 0.5 1.0))))
+  (testing "sign-mismatched step raises (start=1 step=-0.5 stop=3)"
+    (ok (signals (phaverlite-mode/sweep::generate-range 1.0 -0.5 3.0)))))

@@ -44,3 +44,25 @@
         (let ((nonblank (remove-if (lambda (s) (zerop (length s))) tokens)))
           (when (>= (length nonblank) 2)
             (nth (- (length nonblank) 2) nonblank)))))))
+
+;;; --- range generation ----------------------------------------------------
+
+(defun generate-range (start step stop)
+  "Return a list of floats from START toward STOP, inclusive, stepping by
+   STEP. Mirrors `seq START STEP STOP` semantics. STOP is included iff it
+   is reachable from START via integer multiples of STEP (allowing for
+   floating-point slop). Raises ERROR if STEP is zero or sign-mismatched."
+  (when (zerop step)
+    (error "step must be non-zero"))
+  (let ((direction (- stop start)))
+    (when (and (not (zerop direction))
+               (not (eq (minusp step) (minusp direction))))
+      (error "step direction (~a) doesn't reach stop (~a from ~a)"
+             step stop start)))
+  (loop with eps = (* (abs step) 1.0e-3)
+        for i from 0
+        for v = (+ start (* i step))
+        while (if (minusp step)
+                  (>= v (- stop eps))
+                  (<= v (+ stop eps)))
+        collect v))
