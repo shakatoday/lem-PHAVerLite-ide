@@ -563,9 +563,17 @@ Append:
 
 (defun write-status-line (buf done total current-or-message)
   "Rewrite line 3 (the status line) in place. CURRENT-OR-MESSAGE is the
-   trailing text after '[done/total done]  ' — typically 'current: pc=<x>'
-   during a sweep, or a summary like 'cancelled by user' on finalize."
-  (let ((text (format nil "[~a/~a done]  ~a" done total current-or-message)))
+   trailing text after '[done/total done]  '. If it looks like a pc value
+   ('pc=<x>'), the renderer prefixes 'current: ' so callers can pass the
+   bare 'pc=<x>' string and the test contract ('current: pc=<x>' visible
+   in the buffer) holds. Summary strings like 'cancelled by user' or
+   'starting…' pass through unmodified."
+  (let* ((msg (if (and (stringp current-or-message)
+                       (or (search "pc=" current-or-message)
+                           (search "PC=" current-or-message)))
+                  (format nil "current: ~a" current-or-message)
+                  current-or-message))
+         (text (format nil "[~a/~a done]  ~a" done total msg)))
     (rewrite-line buf 3 text)))
 
 (defun write-row (buf pc result-symbol cpu-string)
@@ -923,7 +931,7 @@ Append to `src/sweep.lisp`:
          (write-status-line (sweep-state-buffer state)
                             (sweep-state-done state)
                             (sweep-state-total state)
-                            (format nil "current: pc=~a" pc))
+                            (format nil "pc=~a" pc))
          (handler-case
              (let ((out-path (sweep-state-output-path state)))
                (materialize-template (sweep-state-template-path state)
