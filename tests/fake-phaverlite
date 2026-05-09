@@ -1,7 +1,7 @@
 #!/bin/sh
 # tests/fake-phaverlite — test fixture for phaverlite invocations.
 #
-# Two modes:
+# Three modes:
 #
 #   1. Default (no FAKE_PHAVERLITE_MODE): echoes "FAKE OUTPUT $1" and
 #      exits $FAKE_EXIT (default 0). Used by sub-project B's
@@ -13,9 +13,14 @@
 #         FAKE_CPU     <seconds>                            (default 0.42)
 #         FAKE_SLEEP   <seconds>                            (default 0)
 #         FAKE_EXIT    <code>                               (default 0)
+#         FAKE_TOUCH_REACH_INV  any non-empty value         (default unset)
+#           If set, also `touch out_reach out_inv` in cwd so the sweep
+#           plot-row deftest finds them in the per-pc dir.
 #
-# Usage in tests: bin/test-mode symlinks this as `phaverlite` on PATH;
-# deftests `let`-bind env vars per call.
+#   3. FAKE_PHAVERLITE_MODE=plot: touches out_reach and out_inv in cwd
+#      (mimicking real phaverlite's .print() side effects), exits
+#      $FAKE_EXIT (default 0). No stdout text needed — the plot command
+#      doesn't parse stdout.
 
 case "${FAKE_PHAVERLITE_MODE:-}" in
   sweep)
@@ -25,9 +30,16 @@ case "${FAKE_PHAVERLITE_MODE:-}" in
       *)           echo "(no result)" ;;
     esac
     echo "Time in get_reach_set : ${FAKE_CPU:-0.42} s"
+    if [ -n "${FAKE_TOUCH_REACH_INV:-}" ]; then
+      touch out_reach out_inv
+    fi
     if [ -n "${FAKE_SLEEP:-}" ] && [ "${FAKE_SLEEP}" -gt 0 ] 2>/dev/null; then
       sleep "$FAKE_SLEEP"
     fi
+    exit "${FAKE_EXIT:-0}"
+    ;;
+  plot)
+    touch out_reach out_inv
     exit "${FAKE_EXIT:-0}"
     ;;
   *)
