@@ -48,9 +48,10 @@ That means the following all live inside the repo, **not** in `~/.config/lem/`,
   need to patch lem itself; in that case, `vendor/lem/` is added and qlfile
   points at it.
 - Lem `init.lisp` (e.g. `config/init.lisp`).
-- Our IDE Lisp packages (e.g. `src/phaverlite-mode/`, `src/phaverlite-lsp/`),
-  exposed to the Lisp image as ASDF systems registered through qlot's
-  per-project `local-projects` mechanism (or `CL_SOURCE_REGISTRY`).
+- Our IDE Lisp code (asd files at repo root, sources in top-level folders
+  like `src/`, per the ASDF-layout convention below), exposed to the Lisp
+  image as ASDF systems registered through qlot's per-project
+  `local-projects` mechanism (or `CL_SOURCE_REGISTRY`).
 - The launch script that boots SBCL via `qlot exec` with the right `--load`
   chain.
 
@@ -140,7 +141,22 @@ a shell loop.
 
 ## Conventions
 
-- Common Lisp, package-per-directory, ASDF systems live under `src/<name>/`.
+- Common Lisp. **ASDF layout follows lem's convention:** the `.asd` file
+  lives at the repo root with `:pathname "src"` (or another top-level
+  source folder), and the source files sit directly under that folder —
+  no extra project-name subdirectory. When the repo grows multiple ASDF
+  systems, add new top-level source folders (mirroring lem's
+  `extensions/`, `frontends/`, `contrib/`) rather than nesting under `src/`.
+- **Inline package definitions. No `package.lisp` files.** Every `.lisp`
+  file starts with `(defpackage …)` immediately followed by `(in-package …)`
+  for the package that file belongs to. Default is one package per file.
+  When a module grows large enough to split across multiple files, those
+  files naturally share a single package — that's a normal growth pattern,
+  not a special case. Never aggregate `defpackage` forms into a separate
+  `package.lisp`. This applies to all CL we write and to anything
+  subagents/skills generate on our behalf.
+- **Package names use lem's `/` sub-module style**, e.g.
+  `phaverlite-mode/syntax`, not Java-style `phaverlite-mode.syntax`.
 - No global writes: never touch `~/.sbclrc`, `~/.config/lem/`, system quicklisp.
 - `.pha` is a C-style syntax (`//` comments, `;` terminators, `loc … :` blocks,
   `automaton … end`). Treat it as its own language — do not reuse a generic
