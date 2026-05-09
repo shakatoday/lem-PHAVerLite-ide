@@ -1,5 +1,6 @@
 #!/usr/bin/env zsh
-# bin/build-image — pre-load lem-ncurses into an SBCL image for fast launch.
+# bin/build-image — pre-load lem-ncurses + phaverlite-mode into an SBCL image
+# for fast launch.
 #
 # Without an image, every launch pays ~8s for `(ql:quickload :lem-ncurses)`
 # (ASDF walk + ~1500 FASL loads). With an image, SBCL memory-maps the heap
@@ -38,6 +39,8 @@ qlot exec sbcl --no-userinit --no-sysinit \
   --eval '(ql:quickload :cffi :silent t)' \
   --eval "(let ((libdir (uiop:getenv \"PHAVERLITE_IDE_LIB\"))) (when libdir (pushnew (uiop:ensure-directory-pathname libdir) cffi:*foreign-library-directories* :test #'equal)))" \
   --eval '(ql:quickload :lem-ncurses :silent t)' \
+  --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
+  --eval '(ql:quickload :phaverlite-mode :silent t)' \
   --eval "(defparameter cl-user::*phaverlite-ide-banner* \"[phaverlite-ide] sub-project A bootstrap loaded\")" \
   --eval "(lem:add-hook lem:*after-init-hook* (lambda () (lem:message cl-user::*phaverlite-ide-banner*)))" \
   --eval "(sb-ext:save-lisp-and-die \"$CORE\" :toplevel (lambda () (lem:lem) (uiop:quit 0)))"
