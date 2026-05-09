@@ -98,3 +98,79 @@
              (write-string replacement out)
              (setf i (+ j n-len))
           finally (write-string haystack out :start i))))
+
+;;; --- results-buffer renderer ---------------------------------------------
+
+(defparameter *output-buffer-name* "*phaverlite-sweep*")
+
+(defparameter +header-line-count+ 3
+  "Header occupies lines 1-2 (shebang + range). Status line is line 3,
+   rewritten in place per iteration. Table starts at line 5 (line 4 is
+   blank for visual separation, line 5 is the column header).")
+
+(defun ensure-sweep-buffer ()
+  "Get-or-create the *phaverlite-sweep* buffer; clear it; return it."
+  (let ((buf (or (lem:get-buffer *output-buffer-name*)
+                 (lem:make-buffer *output-buffer-name*))))
+    (setf (lem:buffer-read-only-p buf) nil)
+    (lem:erase-buffer buf)
+    buf))
+
+(defun write-header (buf template-path start step stop count)
+  "Write the immutable two-line header + initial status line. Subsequent
+   write-status-line calls rewrite line 3."
+  (let ((p (lem:buffer-end-point buf)))
+    (lem:insert-string p (format nil "$ phaverlite-sweep ~a~%" template-path))
+    (lem:insert-string p (format nil "Sweep PC: start=~a  step=~a  stop=~a  (~a values)~%"
+                                start step stop count))
+    ;; Placeholder status line so write-status-line has a line to overwrite.
+    (lem:insert-string p (format nil "[0/~a done]  starting…~%" count))
+    (lem:insert-string p (format nil "~%"))               ; blank separator
+    (lem:insert-string p (format nil "pc       result          cpu(s)~%"))
+    (lem:insert-string p (format nil "-------- --------------- ----------~%"))))
+
+(defun rewrite-line (buf line-number new-text)
+  "Replace the contents of LINE-NUMBER (1-based) with NEW-TEXT. NEW-TEXT
+   should NOT include a trailing newline."
+  (let ((p (lem:copy-point (lem:buffer-point buf) :temporary)))
+    (lem:move-to-line p line-number)
+    (lem:line-start p)
+    (let ((end (lem:copy-point p :temporary)))
+      (lem:line-end end)
+      (lem:delete-between-points p end))
+    (lem:insert-string p new-text)))
+
+(defun write-status-line (buf done total current-or-message)
+  "Rewrite line 3 (the status line) in place. CURRENT-OR-MESSAGE is the
+   trailing text after '[done/total done]  ' — typically 'current: pc=<x>'
+   during a sweep, or a summary like 'cancelled by user' on finalize."
+  (let ((text (format nil "[~a/~a done]  ~a" done total
+                      (if (and (stringp current-or-message)
+                               (or (search "pc=" current-or-message)
+                                   (search "PC=" current-or-message)))
+                          (format nil "current: ~a" current-or-message)
+                          current-or-message))))
+    (rewrite-line buf 3 text)))
+
+(defun write-row (buf pc result-symbol cpu-string)
+  "Append one row to the end of the buffer. Columns: pc (8w) | result (15w)
+   | cpu(s) (10w). Column widths match the layout preview exactly."
+  (let ((result-string (case result-symbol
+                         (:reachable   "reachable")
+                         (:unreachable "unreachable")
+                         (:cancelled   "cancelled")
+                         (:unknown     "?")
+                         (otherwise    (format nil "~a" result-symbol)))))
+    (let ((p (lem:buffer-end-point buf)))
+      (lem:insert-string
+       p (format nil "~vA ~vA ~vA~%"
+                 8 (format nil "~a" pc)
+                 15 result-string
+                 10 (or cpu-string "--"))))))
+
+(defun finalize (buf done total cancelled-p)
+  "Rewrite the status line as a final summary and freeze the buffer
+   read-only."
+  (write-status-line buf done total
+                     (if cancelled-p "cancelled by user" "finished"))
+  (setf (lem:buffer-read-only-p buf) t))

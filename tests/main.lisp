@@ -222,3 +222,54 @@
       (ok (signals
               (phaverlite-mode/sweep::materialize-template
                tmpl-path out-path 1.0))))))
+
+(deftest sweep-render
+  (testing "write-header inserts 3 lines: shebang-style, range, status"
+    (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
+      (lem:erase-buffer buf)
+      (phaverlite-mode/sweep::write-header
+       buf "Lab3/heater_template.pha" 3.0 -0.05 1.0 41)
+      (let ((text (lem:points-to-string (lem:buffer-start-point buf)
+                                         (lem:buffer-end-point buf))))
+        (ok (search "phaverlite-sweep Lab3/heater_template.pha" text))
+        (ok (search "start=3.0" text))
+        (ok (search "step=-0.05" text))
+        (ok (search "stop=1.0" text))
+        (ok (search "(41 values)" text)))))
+  (testing "write-status-line rewrites line 3 in place (only one status line)"
+    (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
+      (lem:erase-buffer buf)
+      (phaverlite-mode/sweep::write-header
+       buf "x.pha" 1.0 0.5 3.0 5)
+      (phaverlite-mode/sweep::write-status-line buf 0 5 "starting…")
+      (phaverlite-mode/sweep::write-status-line buf 2 5 "pc=1.5")
+      (let ((text (lem:points-to-string (lem:buffer-start-point buf)
+                                         (lem:buffer-end-point buf))))
+        ;; The starting message must NOT remain.
+        (ok (not (search "starting…" text)))
+        (ok (search "[2/5 done]" text))
+        (ok (search "current: pc=1.5" text)))))
+  (testing "write-row appends a column-aligned row below the table separator"
+    (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
+      (lem:erase-buffer buf)
+      (phaverlite-mode/sweep::write-header
+       buf "x.pha" 3.0 -0.05 1.0 41)
+      (phaverlite-mode/sweep::write-status-line buf 0 41 "pc=3.0")
+      (phaverlite-mode/sweep::write-row buf 3.0 :unreachable "0.42")
+      (let ((text (lem:points-to-string (lem:buffer-start-point buf)
+                                         (lem:buffer-end-point buf))))
+        (ok (search "3.0" text))
+        (ok (search "unreachable" text))
+        (ok (search "0.42" text)))))
+  (testing "finalize rewrites status line to summary"
+    (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
+      (lem:erase-buffer buf)
+      (phaverlite-mode/sweep::write-header
+       buf "x.pha" 3.0 -0.05 1.0 41)
+      (phaverlite-mode/sweep::write-status-line buf 8 41 "pc=2.65")
+      (phaverlite-mode/sweep::finalize buf 8 41 t)
+      (let ((text (lem:points-to-string (lem:buffer-start-point buf)
+                                         (lem:buffer-end-point buf))))
+        (ok (search "[8/41 done]" text))
+        (ok (search "cancelled by user" text))
+        (ok (not (search "current: pc=2.65" text)))))))
