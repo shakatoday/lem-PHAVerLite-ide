@@ -116,3 +116,56 @@ foo := 99;
 end" :region)))
       (ok (null scalars))
       (ok (null regions)))))
+
+(defun complete (text symbols)
+  "Helper: pass TEXT and SYMBOLS to complete-at with offset = (length text).
+   Used by tests that want completion at the cursor at end-of-text."
+  (phaverlite-lsp/completion:complete-at text (length text) symbols))
+
+(deftest lsp-completion
+  (testing "plain prefix 'co' matches keywords + symbol names starting with 'co'"
+    (let* ((symbols (list (phaverlite-lsp/symbols:make-symbol-info
+                           :name "cool" :kind :location :line 1)
+                          (phaverlite-lsp/symbols:make-symbol-info
+                           :name "cond1" :kind :region :line 2)
+                          (phaverlite-lsp/symbols:make-symbol-info
+                           :name "x" :kind :var :line 3)))
+           (results (complete "co" symbols)))
+      (ok (member "cool" results :test #'string=))
+      (ok (member "cond1" results :test #'string=))
+      (ok (member "contr_var" results :test #'string=))
+      (ok (not (member "x" results :test #'string=)))))
+  (testing "plain prefix at file start with no symbols → only keywords"
+    (let ((results (complete "" '())))
+      (ok (member "automaton" results :test #'string=))
+      (ok (member "end" results :test #'string=))))
+  (testing "after 'sys.' where sys is :automaton → automaton-methods only"
+    (let* ((symbols (list (phaverlite-lsp/symbols:make-symbol-info
+                           :name "sys" :kind :automaton :line 1)))
+           (results (complete "sys." symbols)))
+      (ok (member "add_label" results :test #'string=))
+      (ok (member "set_partition_constraints" results :test #'string=))
+      (ok (member "is_reachable" results :test #'string=))
+      (ok (member "reachable" results :test #'string=))
+      (ok (member "get_invariants" results :test #'string=))
+      ;; NOT keywords or other symbols
+      (ok (not (member "automaton" results :test #'string=)))
+      (ok (not (member "sys" results :test #'string=)))))
+  (testing "after 'bad.' where bad is :region → only 'print'"
+    (let* ((symbols (list (phaverlite-lsp/symbols:make-symbol-info
+                           :name "bad" :kind :region :line 1)))
+           (results (complete "bad." symbols)))
+      (ok (equal '("print") results))))
+  (testing "after 'pc.' where pc is :scalar → empty list"
+    (let* ((symbols (list (phaverlite-lsp/symbols:make-symbol-info
+                           :name "pc" :kind :scalar :line 1)))
+           (results (complete "pc." symbols)))
+      (ok (null results))))
+  (testing "after 'unknown.' (not in symbols) → empty list"
+    (let ((results (complete "unknown." '())))
+      (ok (null results))))
+  (testing "dot-completion with prefix after dot: 'sys.add' → 'add_label' only"
+    (let* ((symbols (list (phaverlite-lsp/symbols:make-symbol-info
+                           :name "sys" :kind :automaton :line 1)))
+           (results (complete "sys.add" symbols)))
+      (ok (equal '("add_label") results)))))
