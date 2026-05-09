@@ -15,8 +15,8 @@
 ;; Lem expects literal color names or hex strings, NOT base16 tokens like
 ;; :base09 (which silently fall back to the default foreground).
 (define-attribute syntax-keyword-block-attribute
-  (:dark  :foreground "orange"      :bold t)
-  (:light :foreground "DarkOrange3" :bold t))
+  (:dark  :foreground "LightGoldenrod" :bold t)
+  (:light :foreground "DarkGoldenrod"  :bold t))
 
 (defparameter *block-keywords*
   '("automaton" "end" "loc"))

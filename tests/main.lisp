@@ -61,14 +61,34 @@
 (deftest indent
   (testing "top of file indents to 0"
     (ok (= 0 (expected-indent "automaton heater" 0))))
-  (testing "line after 'automaton …' indents +4"
+  (testing "section keyword after 'automaton' indents +4"
     (ok (= 4 (expected-indent (format nil "automaton heater~%contr_var: t;") 1))))
-  (testing "line after a ': '-terminated header indents +4"
+  (testing "statement after 'loc … :' header indents +4 from loc"
     (ok (= 4 (expected-indent (format nil "loc cool:~%  while x >= 18") 1))))
-  (testing "line starting with 'end' dedents one step from previous indent"
-    (ok (= 0 (expected-indent (format nil "    while x >= 18~%end") 1))))
-  (testing "blank previous line falls back to nearest non-blank"
-    (ok (= 4 (expected-indent (format nil "loc cool:~%~%  wait { x' == -0.1*x }") 2)))))
+  (testing "'end' aligns with the enclosing automaton (column 0 here)"
+    (ok (= 0 (expected-indent (format nil "automaton heater~%    loc cool:~%        do … goto cool;~%end") 3))))
+  (testing "blank previous line falls back to nearest non-blank anchor"
+    (ok (= 4 (expected-indent (format nil "loc cool:~%~%  wait { x' == -0.1*x }") 2))))
+  (testing "second 'loc' is at automaton-level, NOT nested in the previous loc body"
+    (ok (= 4 (expected-indent
+              (format nil
+                      "automaton heater~%    loc cool:~%        do … goto heat;~%    loc heat:")
+              3))))
+  (testing "'initially:' is at automaton-level, NOT nested in the loc above"
+    (ok (= 4 (expected-indent
+              (format nil
+                      "automaton heater~%    loc cool:~%        do … goto cool;~%    initially: cool & x == 22;")
+              3))))
+  (testing "statement after 'end' returns to top level (0)"
+    (ok (= 0 (expected-indent
+              (format nil "automaton heater~%end~%heater.add_label(tau);")
+              2))))
+  (testing "statement inside a deeply nested loc body uses loc column + 4"
+    ;; loc at column 4 → body at column 8, regardless of how many statement
+    ;; lines are between the loc header and the current line.
+    (ok (= 8 (expected-indent
+              (format nil "automaton heater~%    loc cool:~%        wait { … }~%        when x <= 19~%        do { … } goto heat;~%        ")
+              5)))))
 
 (defun with-stubbed-prompt (answer thunk)
   "Run THUNK with lem:prompt-for-y-or-n-p stubbed to return ANSWER (T or NIL).
