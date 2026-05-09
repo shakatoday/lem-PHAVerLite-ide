@@ -17,8 +17,21 @@ if [[ ! -d "$REPO/.qlot" ]]; then
 fi
 
 cd "$REPO"
+
+# IMPORTANT: lem inherits XDG_CONFIG_HOME / XDG_DATA_HOME / XDG_CACHE_HOME /
+# LEM_HOME from bin/phaverlite-ide's env-isolation, and async-process
+# propagates them to us. But qlot's runtime caches live under those XDG
+# paths in $HOME — pointing them at empty repo-local dirs breaks the
+# transitive load of qlot/progress (Component "lparallel" not found).
+# Unset for our subprocess; the LSP server doesn't need lem's isolation.
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME LEM_HOME
+
+# Diagnostic stderr log — keep so lem-lsp-mode failures surface here
+# instead of being lost.
+mkdir -p var/log
 exec qlot exec sbcl \
   --noinform --no-userinit --no-sysinit \
   --eval '(pushnew (truename ".") asdf:*central-registry* :test #'\''equal)' \
   --eval '(ql:quickload :phaverlite-lsp :silent t)' \
-  --eval '(phaverlite-lsp/main:run)'
+  --eval '(phaverlite-lsp/main:run)' \
+  2>"$REPO/var/log/phaverlite-lsp-stderr.log"
