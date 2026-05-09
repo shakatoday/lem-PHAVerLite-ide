@@ -29,8 +29,7 @@
 | `tests/main.lisp` | modify | +3 deftests: `plot-render`, `plot-buffer-command`, `sweep-plot-row`. Update `sweep-engine` deftest with per-pc dir assertion. |
 | `tests/fake-phaverlite` | modify | Extend with `FAKE_PHAVERLITE_MODE=plot` mode (touches `out_reach`/`out_inv` in cwd). Extend `sweep` mode with `FAKE_TOUCH_REACH_INV` env hook to also touch them. |
 | `tests/fake-graph` | create (executable) | Stand-in for `graph(1)`: echoes `FAKE GRAPH OUTPUT`, exits `${FAKE_EXIT:-0}`. |
-| `tests/fake-open` | create (executable) | Stand-in for macOS `open(1)`: echoes `FAKE OPEN $1`, exits 0. |
-| `bin/test-mode` | modify | Add two `ln -sf` lines for `fake-graph` and `fake-open` next to the existing `phaverlite` symlink. |
+| `bin/test-mode` | modify | Add one `ln -sf` line for `fake-graph` next to the existing `phaverlite` symlink. |
 | `var/plot/` | runtime | Created by plot command. Gitignored (under `var/*`). |
 | `var/sweep/<basename>/pc-<v>/` | runtime | Created by touched-up sweep engine. Gitignored. |
 | `var/lem.core` | regenerated | Rebuild via `bin/build-image` after wiring (no script change needed — phaverlite-mode.asd already covers the new component). |
@@ -260,12 +259,17 @@ EOF
 
 ---
 
-## Task 3: Create `tests/fake-graph` + `tests/fake-open` + extend `bin/test-mode`
+## Task 3: Create `tests/fake-graph` + extend `bin/test-mode`
 
 **Files:**
 - Create: `tests/fake-graph` (executable)
-- Create: `tests/fake-open` (executable)
 - Modify: `bin/test-mode`
+
+`open` (macOS) is invoked async by `render-plot-dir` and the call is
+wrapped in `handler-case` so a failure just surfaces a message and does
+not abort the render. Under headless `--script` rove, the call may fail
+silently or hang briefly; tests do NOT assert on it. So we don't need a
+fake-open stub.
 
 - [ ] **Step 1: Create `tests/fake-graph`**
 
@@ -282,26 +286,11 @@ EOF
 chmod +x tests/fake-graph
 ```
 
-- [ ] **Step 2: Create `tests/fake-open`**
-
-```bash
-cat > tests/fake-open <<'EOF'
-#!/bin/sh
-# tests/fake-open — stand-in for macOS `open(1)`. Echoes the path it was
-# invoked with, exits 0. Used by plot-render tests to verify the launch
-# was attempted without actually popping Preview.app.
-echo "FAKE OPEN $1"
-exit 0
-EOF
-chmod +x tests/fake-open
-```
-
-- [ ] **Step 3: Verify both fakes work**
+- [ ] **Step 2: Verify the fake works**
 
 ```bash
 ./tests/fake-graph; echo "exit=$?"
 FAKE_EXIT=2 ./tests/fake-graph; echo "exit=$?"
-./tests/fake-open /tmp/foo.png
 ```
 
 Expected:
@@ -310,10 +299,9 @@ FAKE GRAPH OUTPUT
 exit=0
 FAKE GRAPH OUTPUT
 exit=2
-FAKE OPEN /tmp/foo.png
 ```
 
-- [ ] **Step 4: Extend `bin/test-mode` to symlink the new fakes**
+- [ ] **Step 3: Extend `bin/test-mode` to symlink the fake**
 
 Read the current `bin/test-mode`. Find the line:
 
@@ -321,34 +309,35 @@ Read the current `bin/test-mode`. Find the line:
 ln -sf "$REPO/tests/fake-phaverlite" "$REPO/var/test-bin/phaverlite"
 ```
 
-Insert two more `ln -sf` lines immediately after it:
+Insert one more `ln -sf` line immediately after it:
 
 ```sh
 ln -sf "$REPO/tests/fake-graph" "$REPO/var/test-bin/graph"
-ln -sf "$REPO/tests/fake-open" "$REPO/var/test-bin/open"
 ```
 
-- [ ] **Step 5: Verify the symlinks land in `var/test-bin/`**
+- [ ] **Step 4: Verify the symlink lands in `var/test-bin/`**
 
 ```bash
 bin/test-mode 2>&1 | tail -3
 ls -la var/test-bin/
 ```
 
-Expected: `bin/test-mode` exits 0 with all prior oks. `var/test-bin/` contains three symlinks (`phaverlite`, `graph`, `open`) all pointing into `tests/`.
+Expected: `bin/test-mode` exits 0 with all prior oks. `var/test-bin/` contains two symlinks (`phaverlite`, `graph`) pointing into `tests/`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add tests/fake-graph tests/fake-open bin/test-mode
+git add tests/fake-graph bin/test-mode
 bin/privacy-preflight staged || exit 1
 git commit -m "$(cat <<'EOF'
-sub-project D: tests/fake-graph + tests/fake-open + symlink wiring
+sub-project D: tests/fake-graph + symlink wiring
 
-Two new shell stubs to isolate plot tests from real GNU plotutils
-graph(1) and macOS open(1). bin/test-mode symlinks both into
-var/test-bin/ next to the existing phaverlite symlink, so plot deftests
-shell out to the fakes (PATH-prepended) instead of the real binaries.
+Shell stub to isolate plot tests from real GNU plotutils graph(1).
+bin/test-mode symlinks it into var/test-bin/ next to the existing
+phaverlite symlink, so plot-render deftests shell out to the fake
+(PATH-prepended) instead of the real binary. The async open(1) call
+in render-plot-dir is wrapped in handler-case and tests don't assert
+on it, so no fake-open stub is needed.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -665,34 +654,17 @@ Append to `src/plot.lisp`:
 ```lisp
 ;;; --- constants -----------------------------------------------------------
 
-(defparameter *output-buffer-name* "*phaverlite-plot*"
-  "Audit buffer for plot status messages.")
-
 (defparameter +plot-filename+ "plot.png")
 (defparameter +reach-filename+ "out_reach")
 (defparameter +inv-filename+   "out_inv")
 
 ;;; --- primitive: render a directory of phaverlite output -----------------
 
-(defun ensure-plot-buffer ()
-  "Get-or-create the *phaverlite-plot* audit buffer."
-  (or (lem:get-buffer *output-buffer-name*)
-      (lem:make-buffer *output-buffer-name*)))
-
-(defun append-plot-line (text)
-  "Append TEXT (no trailing newline) + newline to the *phaverlite-plot*
-   audit buffer."
-  (let* ((buf (ensure-plot-buffer))
-         (p (lem:buffer-end-point buf)))
-    (lem:insert-string p text)
-    (lem:insert-character p #\newline)))
-
 (defun render-plot-dir (dir)
   "Render DIR's out_reach + out_inv to DIR/plot.png via graph(1), then
    open the PNG in the system viewer (`open` on macOS). Returns the
-   plot.png pathname on success, NIL on any failure (precondition,
-   graph error, etc.) — failures surface via lem:message and the
-   *phaverlite-plot* audit buffer."
+   plot.png pathname on success, NIL on any failure — failures surface
+   via lem:message (which is also recorded in lem's *Messages* buffer)."
   (let* ((dir (uiop:ensure-directory-pathname dir))
          (reach (merge-pathnames +reach-filename+ dir))
          (inv   (merge-pathnames +inv-filename+ dir))
@@ -701,12 +673,10 @@ Append to `src/plot.lisp`:
       ((not (probe-file reach))
        (lem:message "Plot: no ~a in ~a (did your .pha use .print?)"
                     +reach-filename+ dir)
-       (append-plot-line (format nil "missing: ~a" reach))
        nil)
       ((not (probe-file inv))
        (lem:message "Plot: no ~a in ~a (did your .pha use .print?)"
                     +inv-filename+ dir)
-       (append-plot-line (format nil "missing: ~a" inv))
        nil)
       (t
        (handler-case
@@ -725,14 +695,11 @@ Append to `src/plot.lisp`:
              (handler-case
                  (uiop:launch-program (list "open" (namestring plot)))
                (error (e)
-                 (lem:message "open failed: ~a; plot at ~a" e plot)
-                 (append-plot-line (format nil "open failed: ~a" e))))
+                 (lem:message "open failed: ~a; plot at ~a" e plot)))
              (lem:message "Plot: ~a" plot)
-             (append-plot-line (format nil "rendered: ~a" plot))
              plot)
          (error (e)
            (lem:message "graph failed: ~a" e)
-           (append-plot-line (format nil "graph failed: ~a" e))
            nil))))))
 ```
 
@@ -760,9 +727,8 @@ Core primitive shared by both plot surfaces (M-x phaverlite-plot-buffer
 and `p` on a sweep row). Validates DIR/out_reach + DIR/out_inv exist,
 invokes graph(1) with the spec's recipe (no title, hardcoded filenames),
 redirects PNG output to DIR/plot.png via uiop's :output kwarg, then
-launches `open` on the result. All failures messaged via lem:message
-and recorded in *phaverlite-plot* audit buffer; returns NIL on any
-failure, plot.png pathname on success.
+launches `open` on the result. All failures messaged via lem:message;
+returns NIL on any failure, plot.png pathname on success.
 
 Tests: plot-render deftest covers the three branches (both files
 present, out_reach missing, out_inv missing) using temp dirs and a
@@ -875,21 +841,15 @@ Append:
          (handler-case
              (let ((proc (uiop:launch-program
                           (list "phaverlite" (namestring path))
-                          :output :stream
-                          :error-output :output
+                          :input nil :output nil :error-output nil
                           :directory plot-dir)))
-               ;; Drain stdout into the audit buffer — single short run,
-               ;; synchronous wait is fine here (no cancellation in
-               ;; prototype's plot path).
-               (let ((stream (uiop:process-info-output proc)))
-                 (loop for line = (read-line stream nil nil)
-                       while line
-                       do (append-plot-line line)))
+               ;; Synchronous wait — single short run, no cancellation
+               ;; in the prototype plot path. stdout/stderr discarded;
+               ;; what we care about is the side-effect files.
                (uiop:wait-process proc)
                (render-plot-dir plot-dir))
            (error (e)
              (lem:message "phaverlite failed: ~a" e)
-             (append-plot-line (format nil "phaverlite failed: ~a" e))
              nil)))))))
 
 ;;; --- mode keybinding ----------------------------------------------------
@@ -922,8 +882,8 @@ Standalone plot command. Buffer-precondition pattern mirrors
 phaverlite-run-buffer (must visit a file; modified-buffer y/n prompt).
 Refuses when a sweep is in progress (delegates to `p` on a sweep row).
 Spawns phaverlite with :directory set to var/plot/<basename>/ so its
-out_reach/out_inv land there, drains stdout into the *phaverlite-plot*
-audit buffer, then calls render-plot-dir. C-c C-p bound at the bottom
+out_reach/out_inv land there, discards stdout, then calls
+render-plot-dir. C-c C-p bound at the bottom
 of src/plot.lisp (loaded after src/commands.lisp's keymap definition).
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
@@ -1201,7 +1161,7 @@ In lem: `C-x C-f Lab3/bouncing_ball.pha` → opens in PHAVer mode.
 
 Press `C-c C-p`. Behavior expected:
 - If buffer modified: y/n prompt to save (press y).
-- `phaverlite` runs against the file with cwd = `var/plot/bouncing_ball/`. Stdout drains into `*phaverlite-plot*` audit buffer (which you can `C-x b` to inspect).
+- `phaverlite` runs against the file with cwd = `var/plot/bouncing_ball/`. Stdout/stderr discarded; only the side-effect files matter.
 - After phaverlite exits, `graph` runs and writes `var/plot/bouncing_ball/plot.png`.
 - macOS Preview.app pops up showing the plot (red-rectangle invariants + green-polygon reach-set).
 - Lem minibuffer shows `Plot: <path>`.

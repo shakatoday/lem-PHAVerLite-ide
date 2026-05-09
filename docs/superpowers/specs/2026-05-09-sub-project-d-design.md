@@ -87,7 +87,6 @@ separate system would create boundaries that don't earn their keep.
 
 ```
 src/plot.lisp                  package phaverlite-mode/plot
-                                — *output-buffer-name* "*phaverlite-plot*"
                                 — render-plot-dir (internal primitive)
                                 — phaverlite-plot-buffer (interactive command)
                                 — phaverlite-sweep-plot-row (interactive command)
@@ -111,10 +110,7 @@ tests/main.lisp                +deftests: plot-render, plot-buffer-command,
                                 for the new per-pc dir layout
 tests/fake-graph               new shell stub for graph; symlinked as `graph`
                                 on test PATH
-tests/fake-open                new shell stub for open; symlinked as `open`
-                                on test PATH
-bin/test-mode                  modify: two extra ln -sf lines for the new
-                                fakes
+bin/test-mode                  modify: one extra ln -sf line for fake-graph
 ```
 
 `config/init.lisp` and `bin/build-image` untouched — they already load
@@ -128,22 +124,20 @@ System-level deps unchanged: still need `phaverlite`, `sbcl`, `plotutils`
 ### State and constants
 
 ```lisp
-(defparameter *output-buffer-name* "*phaverlite-plot*"
-  "Audit buffer for plot status messages — buffer-not-visited, errors,
-   path of the rendered file. Plot itself opens externally; this buffer
-   accumulates an audit trail.")
-
 (defparameter +plot-filename+ "plot.png")
 (defparameter +reach-filename+ "out_reach")
 (defparameter +inv-filename+   "out_inv")
 ```
+
+Failures and successes surface via `lem:message` only — no audit buffer.
+Lem's built-in `*Messages*` already serves as the persistent log.
 
 ### Core primitive: `render-plot-dir`
 
 ```lisp
 (defun render-plot-dir (dir) → pathname-or-NIL
   ;; 1. Validate: dir/out_reach AND dir/out_inv both exist. Missing →
-  ;;    lem:message + append note to *phaverlite-plot* buffer + return NIL.
+  ;;    lem:message + return NIL.
   ;; 2. Compute output path = dir/plot.png.
   ;; 3. Build the `graph` command:
   ;;      graph -T png -C -B -q 0.1 <dir>/out_inv -C -q 0.5 <dir>/out_reach
@@ -175,8 +169,8 @@ System-level deps unchanged: still need `phaverlite`, `sbcl`, `plotutils`
   ;;      :output :stream :error-output :output
   ;;      :directory plot-dir
   ;;    Wait synchronously (uiop:wait-process). Single-run, no
-  ;;    cancellation in prototype. Drain stdout into the *phaverlite-plot*
-  ;;    audit buffer for visibility.
+  ;;    cancellation in prototype. Discard stdout (phaverlite's text
+  ;;    output isn't useful for plotting).
   ;; 6. (render-plot-dir plot-dir).
   )
 ```
@@ -259,7 +253,7 @@ user types C-c C-p
   → uiop:launch-program ("phaverlite" path)
         :output :stream :error-output :output
         :directory plot-dir
-    (synchronous wait; drain stdout into *phaverlite-plot*)
+    (synchronous wait; stdout discarded)
   → (render-plot-dir plot-dir)
         check out_reach + out_inv exist
         graph -T png … > plot-dir/plot.png
@@ -301,7 +295,7 @@ inside sweep-tick, when spawning next pc value:
 | `*active-sweep*` non-nil during plot-buffer | Concurrent phaverlite spawns | Refuse: `Sweep in progress; use 'p' on a sweep row instead` |
 | `phaverlite` not on PATH | `uiop:launch-program` raises | Catch; message `phaverlite: command not found on PATH`; abort, no render |
 | `phaverlite` exits non-zero | Process completes non-zero | Continue to render anyway — out_reach/out_inv may exist; render-plot-dir handles missing files |
-| `out_reach` or `out_inv` missing in plot-dir | render-plot-dir precondition fails | Message `Plot: no out_reach/out_inv in <dir> (did your .pha use .print?)`; append note to `*phaverlite-plot*`; return NIL |
+| `out_reach` or `out_inv` missing in plot-dir | render-plot-dir precondition fails | Message `Plot: no out_reach/out_inv in <dir> (did your .pha use .print?)`; return NIL |
 | `graph` not on PATH | `uiop:run-program` raises | Catch; message `graph: command not found (install GNU plotutils)`; abort |
 | `graph` exits non-zero | Process completes non-zero | Catch; message `graph failed: <stderr first line>`; partial PNG (if any) stays on disk; no `open` |
 | `open` fails (e.g., headless session) | `uiop:launch-program` raises | Catch; message `open failed: <err>; plot at <path>`. PNG was rendered successfully; user opens manually |
@@ -310,8 +304,9 @@ inside sweep-tick, when spawning next pc value:
 | Per-pc dir missing (e.g., row was cancelled) | `probe-file` returns NIL | Message `No plot data for pc=<pc> (was it cancelled?)`; return |
 | Concurrent plot requests | Race on `plot.png` | Acceptable for prototype — `graph` rewrites in place; brief stale view in Preview at worst |
 
-No retry. No fallback. No automatic re-run. Failures messaged and recorded
-in `*phaverlite-plot*` audit buffer; user decides next step.
+No retry. No fallback. No automatic re-run. Failures messaged via
+`lem:message` (which is also recorded in lem's built-in `*Messages*`
+buffer); user decides next step.
 
 ## Testing
 
@@ -329,23 +324,18 @@ echo "FAKE GRAPH OUTPUT"
 exit "${FAKE_EXIT:-0}"
 ```
 
-### `tests/fake-open` (new shell stub)
-
-```sh
-#!/bin/sh
-# tests/fake-open — stand-in for macOS `open(1)`. Lets tests verify the
-# launch was attempted without actually popping Preview.app.
-echo "FAKE OPEN $1"
-exit 0
-```
-
 ### `bin/test-mode` extension
 
-Two lines added next to the existing `phaverlite` symlink:
+One line added next to the existing `phaverlite` symlink:
 ```sh
 ln -sf "$REPO/tests/fake-graph" "$REPO/var/test-bin/graph"
-ln -sf "$REPO/tests/fake-open"  "$REPO/var/test-bin/open"
 ```
+
+The async `open` call in `render-plot-dir` is wrapped in `handler-case`;
+under a headless `--script` rove run it'll likely fail (no GUI session)
+and the failure is silently swallowed — that's the documented behavior
+("open failed: <err>; plot at <path>"). Tests don't need to assert on
+`open` invocation.
 
 ### New deftests
 
@@ -416,7 +406,6 @@ content (the `*phaverlite-sweep*` text), which is unaffected.
 ```
 src/plot.lisp                                                     new
 tests/fake-graph                                                  new (executable)
-tests/fake-open                                                   new (executable)
 docs/superpowers/specs/2026-05-09-sub-project-d-design.md         (this file)
 ```
 
@@ -435,7 +424,7 @@ tests/fake-phaverlite      add FAKE_PHAVERLITE_MODE=plot branch (touch
                             out_reach + out_inv in cwd) AND a
                             FAKE_TOUCH_REACH_INV env-var hook for the
                             sweep mode (also touches in cwd)
-bin/test-mode              +2 ln -sf lines for fake-graph and fake-open
+bin/test-mode              +1 ln -sf line for fake-graph
 ```
 
 ## After D
