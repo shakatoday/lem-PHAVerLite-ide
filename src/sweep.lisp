@@ -349,3 +349,98 @@
     (setf *active-sweep* state)
     (start-next-iteration state)
     state))
+
+;;; --- interactive commands -----------------------------------------------
+
+(defparameter *last-sweep-args* nil
+  "List (start step stop) from the last successful sweep, used to prefill
+   the next minibuffer prompt. NIL means use the default 3.0 -0.05 1.0.")
+
+(defun parse-sweep-args (input)
+  "Parse a 'start step stop' string into three floats. Raises ERROR on
+   any non-numeric token or wrong arity. Error messages are intentionally
+   generic — the user's input is not echoed back verbatim."
+  (let ((tokens (remove-if (lambda (s) (zerop (length s)))
+                           (uiop:split-string input
+                                              :separator '(#\space #\tab)))))
+    (unless (= 3 (length tokens))
+      (error "Need exactly 3 numbers"))
+    (mapcar (lambda (tok)
+              (let ((n (handler-case
+                           (with-input-from-string (s tok) (read s))
+                         (error () (error "Not a number")))))
+                (unless (realp n) (error "Not a number"))
+                (coerce n 'float)))
+            tokens)))
+
+(define-command phaverlite-sweep-buffer (&optional buffer) ()
+  "Sweep the __PC__ placeholder in the current .pha buffer over a range
+   of values. Prompts for 'start step stop'. Refuses if a sweep is
+   already in progress, the buffer is not visiting a file, or the file
+   lacks __PC__. Same buffer-modified prompt as phaverlite-run-buffer."
+  (let* ((buf (or buffer (lem:current-buffer)))
+         (path (lem:buffer-filename buf)))
+    (cond
+      (*active-sweep*
+       (lem:message "Sweep already in progress (use C-c C-k to cancel)"))
+      ((null path)
+       (lem:message "Buffer not visiting a file"))
+      ((not (search "__PC__" (uiop:read-file-string path)))
+       (lem:message "No __PC__ placeholder in ~a" path))
+      ((and (lem:buffer-modified-p buf)
+            (not (lem:prompt-for-y-or-n-p
+                  "Buffer modified. Save and run sweep?")))
+       nil)
+      (t
+       (when (lem:buffer-modified-p buf)
+         (lem:save-buffer buf))
+       (let* ((default (or *last-sweep-args* '(3.0 -0.05 1.0)))
+              (default-string (format nil "~a ~a ~a"
+                                      (first default)
+                                      (second default)
+                                      (third default)))
+              (input (lem:prompt-for-string
+                      "Sweep PC (start step stop): "
+                      :initial-value default-string)))
+         (handler-case
+             (destructuring-bind (start step stop) (parse-sweep-args input)
+               (setf *last-sweep-args* (list start step stop))
+               (run-sweep path start step stop))
+           (error (e)
+             (lem:message "Bad input: ~a" e))))))))
+
+(define-command phaverlite-sweep-skip () ()
+  "Skip the currently-running pc value in the active sweep. Marks the
+   row (cancelled), advances to the next value. No-op if no sweep
+   running."
+  (cond
+    ((null *active-sweep*)
+     (lem:message "No phaverlite-sweep in progress"))
+    (t
+     (setf (sweep-state-cancel-flag *active-sweep*) :skip)
+     (lem:message "Skipping current pc value…"))))
+
+(define-command phaverlite-sweep-cancel () ()
+  "Kill the active sweep entirely. Stops the loop after terminating the
+   in-flight phaverlite. No-op if no sweep running."
+  (cond
+    ((null *active-sweep*)
+     (lem:message "No phaverlite-sweep in progress"))
+    (t
+     (setf (sweep-state-cancel-flag *active-sweep*) :kill)
+     (lem:message "Cancelling sweep…"))))
+
+;;; --- mode keymap bindings ------------------------------------------------
+;;;
+;;; Per option (d) of Task 8 in the plan: bindings live here, NOT in
+;;; src/commands.lisp. Reason: the asd loads sweep.lisp AFTER commands.lisp,
+;;; so commands.lisp's reader can't resolve phaverlite-sweep-* symbols at
+;;; compile time. The keymap defparameter is exported from
+;;; phaverlite-mode/commands and exists by the time sweep.lisp loads.
+
+(define-key phaverlite-mode/commands:*phaverlite-mode-keymap*
+            "C-c C-s" 'phaverlite-sweep-buffer)
+(define-key phaverlite-mode/commands:*phaverlite-mode-keymap*
+            "C-c C-n" 'phaverlite-sweep-skip)
+(define-key phaverlite-mode/commands:*phaverlite-mode-keymap*
+            "C-c C-k" 'phaverlite-sweep-cancel)
