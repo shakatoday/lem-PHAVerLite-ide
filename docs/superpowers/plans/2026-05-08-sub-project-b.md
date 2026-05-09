@@ -635,7 +635,10 @@ Replace the package shell with:
              (let ((c (char s 3)))
                (not (alpha-char-p c)))))))
 
-(defun blank-line-p (line)
+;; NOTE: do not name this `blank-line-p` — that symbol is exported from
+;; `lem/buffer/internal` and our `(:use #:lem)` would package-lock-violate
+;; on (defun blank-line-p ...). Use a non-colliding name.
+(defun blank-text-p (line)
   (zerop (length (trim-line line))))
 
 (defun previous-non-blank-line-text (point)
@@ -646,7 +649,7 @@ Replace the package shell with:
       (unless (lem:line-offset p -1)
         (return (values "" nil)))
       (let ((text (line-text p)))
-        (unless (blank-line-p text)
+        (unless (blank-text-p text)
           (return (values text t)))))))
 
 (defun calc-indent (point)
