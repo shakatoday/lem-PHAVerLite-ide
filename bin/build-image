@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # bin/build-image — pre-load lem-ncurses + phaverlite-mode into an SBCL image
-# for fast launch.
+# for fast launch, AND dump a separate var/lsp.core for the LSP server.
 #
 # Without an image, every launch pays ~8s for `(ql:quickload :lem-ncurses)`
 # (ASDF walk + ~1500 FASL loads). With an image, SBCL memory-maps the heap
@@ -9,8 +9,12 @@
 # Mirrors lem upstream's own scripts/build-ncurses.lisp recipe:
 # quickload lem-ncurses → (lem:init-at-build-time) → save-lisp-and-die.
 #
-# Output: var/lem.core (gitignored). Re-run after any qlot install or after
-# editing config/init.lisp's pre-launch setup.
+# Outputs:
+#   var/lem.core — for bin/phaverlite-ide (lem itself; ~119M)
+#   var/lsp.core — for bin/phaverlite-lsp (LSP server; ~50M, no lem deps)
+#
+# Both gitignored. Re-run after any qlot install or after editing
+# config/init.lisp's pre-launch setup.
 
 set -euo pipefail
 
@@ -29,7 +33,9 @@ fi
 
 mkdir -p "$REPO/var"
 CORE="$REPO/var/lem.core"
+LSP_CORE="$REPO/var/lsp.core"
 
+# --- 1. Lem image (var/lem.core) ----------------------------------------
 print "build-image: dumping lem-ncurses image to $CORE..."
 print "             (~30-60s; only needed once after qlot install or build-deps changes.)"
 
@@ -47,5 +53,21 @@ qlot exec sbcl --no-userinit --no-sysinit \
   --eval "(sb-ext:save-lisp-and-die \"$CORE\" :toplevel (lambda () (lem:lem) (uiop:quit 0)))"
 
 print ""
-print "build-image: done. Output:"
+print "build-image: lem image done."
 ls -lh "$CORE"
+
+# --- 2. LSP server image (var/lsp.core) ---------------------------------
+# Standalone — no lem deps, no qlot at runtime. Plain `sbcl --core var/lsp.core`
+# gives sub-second LSP server startup with no env coupling to lem.
+print ""
+print "build-image: dumping phaverlite-lsp image to $LSP_CORE..."
+print "             (~5-10s; no lem deps so much smaller than lem.core.)"
+
+qlot exec sbcl --no-userinit --no-sysinit \
+  --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
+  --eval '(ql:quickload :phaverlite-lsp :silent t)' \
+  --eval "(sb-ext:save-lisp-and-die \"$LSP_CORE\" :toplevel (lambda () (phaverlite-lsp/main:run) (uiop:quit 0)))"
+
+print ""
+print "build-image: lsp image done."
+ls -lh "$LSP_CORE"
