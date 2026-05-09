@@ -69,3 +69,62 @@
     (ok (= 0 (expected-indent (format nil "    while x >= 18~%end") 1))))
   (testing "blank previous line falls back to nearest non-blank"
     (ok (= 4 (expected-indent (format nil "loc cool:~%~%  wait { x' == -0.1*x }") 2)))))
+
+(defun with-stubbed-prompt (answer thunk)
+  "Run THUNK with lem:prompt-for-y-or-n-p stubbed to return ANSWER (T or NIL).
+   LEM-CORE is package-locked, so we suppress that lock for the swap."
+  (let ((original (fdefinition 'lem:prompt-for-y-or-n-p)))
+    (unwind-protect
+         (progn
+           #+sbcl (sb-ext:without-package-locks
+                    (setf (fdefinition 'lem:prompt-for-y-or-n-p)
+                          (lambda (&rest args) (declare (ignore args)) answer)))
+           #-sbcl (setf (fdefinition 'lem:prompt-for-y-or-n-p)
+                        (lambda (&rest args) (declare (ignore args)) answer))
+           (funcall thunk))
+      #+sbcl (sb-ext:without-package-locks
+               (setf (fdefinition 'lem:prompt-for-y-or-n-p) original))
+      #-sbcl (setf (fdefinition 'lem:prompt-for-y-or-n-p) original))))
+
+(defun make-temp-pha-buffer (&key modified)
+  "Create a buffer visiting a temp .pha file, optionally in modified state."
+  (let* ((path (merge-pathnames
+                (format nil "phaverlite-test-~a.pha" (get-universal-time))
+                (uiop:temporary-directory))))
+    (with-open-file (s path :direction :output :if-exists :supersede)
+      (write-string "automaton t end" s))
+    (let* ((buf (lem:find-file-buffer path)))
+      (when modified
+        (lem:insert-string (lem:buffer-point buf) " "))
+      (values buf path))))
+
+(deftest prompt
+  (testing "modified buffer + 'no' aborts without saving"
+    (multiple-value-bind (buf path) (make-temp-pha-buffer :modified t)
+      (declare (ignore path))
+      (with-stubbed-prompt nil
+        (lambda ()
+          (phaverlite-mode/commands:phaverlite-run-buffer buf)))
+      (ok (lem:buffer-modified-p buf) "buffer is still modified")))
+  (testing "modified buffer + 'yes' saves the buffer"
+    (multiple-value-bind (buf path) (make-temp-pha-buffer :modified t)
+      (declare (ignore path))
+      (with-stubbed-prompt t
+        (lambda ()
+          (phaverlite-mode/commands:phaverlite-run-buffer buf)))
+      (ng (lem:buffer-modified-p buf) "buffer is no longer modified"))))
+
+(deftest run-command
+  (testing "writes 'FAKE OUTPUT <path>' header line and exit:0 footer"
+    (multiple-value-bind (buf path) (make-temp-pha-buffer :modified nil)
+      (declare (ignore path))
+      (with-stubbed-prompt t
+        (lambda ()
+          (phaverlite-mode/commands:phaverlite-run-buffer buf)))
+      (let* ((out (lem:get-buffer "*phaverlite-output*"))
+             (text (lem:points-to-string
+                    (lem:buffer-start-point out)
+                    (lem:buffer-end-point out)))
+             (resolved-path (namestring (lem:buffer-filename buf))))
+        (ok (search (format nil "FAKE OUTPUT ~a" resolved-path) text))
+        (ok (search "---- exit: 0" text))))))
