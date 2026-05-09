@@ -13,8 +13,17 @@
            #:*phaverlite-mode-keymap*))
 (in-package #:phaverlite-mode/commands)
 
+;; Inherit from language-mode's keymap so Tab (indent-line-and-complete-symbol)
+;; and M-; (comment-or-uncomment-region) reach our buffers.
+;;
+;; define-major-mode would normally set up this :base for us, but only if the
+;; keymap variable is unbound when the macro expands (it uses defvar). We have
+;; to bind the keymap here in commands.lisp so that (define-key … 'phaverlite-
+;; run-buffer) below can reference it; that defparameter pre-empts the macro's
+;; defvar, so we set :base ourselves to keep the inheritance chain intact.
 (defparameter *phaverlite-mode-keymap*
-  (make-keymap :description '*phaverlite-mode-keymap*))
+  (make-keymap :description '*phaverlite-mode-keymap*
+               :base (lem:mode-keymap 'lem/language-mode:language-mode)))
 
 (defparameter *output-buffer-name* "*phaverlite-output*")
 

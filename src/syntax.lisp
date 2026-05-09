@@ -7,10 +7,16 @@
            #:syntax-keyword-block-attribute))
 (in-package #:phaverlite-mode/syntax)
 
-;; Custom face: bolder than the stock keyword face. Used for the three
-;; structural keywords (automaton, end, loc) so they pop visually.
+;; Custom face for the structural keywords (automaton, end, loc) so they pop
+;; visually. Distinct from the stock attributes lem ships:
+;;   syntax-keyword-attribute    -> cyan1   / purple        (other PHAVer keywords)
+;;   syntax-constant-attribute   -> LightSteelBlue / #ff00ff (numbers)
+;;   syntax-comment-attribute    -> grey-ish               (// /* */)
+;; Lem expects literal color names or hex strings, NOT base16 tokens like
+;; :base09 (which silently fall back to the default foreground).
 (define-attribute syntax-keyword-block-attribute
-  (t :foreground :base09 :bold t))
+  (:dark  :foreground "orange"      :bold t)
+  (:light :foreground "DarkOrange3" :bold t))
 
 (defparameter *block-keywords*
   '("automaton" "end" "loc"))
