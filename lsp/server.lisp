@@ -17,6 +17,11 @@
   (:export #:run-server))
 (in-package #:phaverlite-lsp/server)
 
+;;; --- diagnostic log file (independent of stdout/stderr to avoid races) -
+
+(defvar *log-stream* nil
+  "Open file stream for diagnostic logging. Opened in run-server.")
+
 ;;; --- document store ----------------------------------------------------
 
 (defvar *documents* (make-hash-table :test 'equal)
@@ -73,14 +78,31 @@
       "source"   "phaverlite-lsp"))
 
 (defun publish-diagnostics (server uri diags)
-  (jsonrpc:notify server "textDocument/publishDiagnostics"
-                  (ht "uri" uri
-                      "diagnostics" (mapcar #'diagnostic->lsp diags))))
+  (format *log-stream* "publish-diagnostics: uri=~a diag-count=~a~%" uri (length diags))
+  (force-output *log-stream*)
+  (handler-case
+      (progn
+        ;; CRITICAL: encode as a VECTOR so yason emits a JSON array `[]`
+        ;; even when empty. yason encodes the empty list `()` as JSON
+        ;; `null`, which lem-lsp-mode's typed Diagnostic[] parser rejects
+        ;; — silently breaking the workspace's diagnostic display.
+        (jsonrpc:notify server "textDocument/publishDiagnostics"
+                        (ht "uri" uri
+                            "diagnostics"
+                            (coerce (mapcar #'diagnostic->lsp diags) 'vector)))
+        (format *log-stream* "publish-diagnostics: notify returned~%")
+        (force-output *log-stream*))
+    (error (e)
+      (format *log-stream* "publish-diagnostics ERROR: ~a~%" e)
+      (force-output *log-stream*))))
 
 (defun reparse-and-publish (server uri text)
+  (format *log-stream* "reparse-and-publish: text-len=~a~%" (length text))
+  (force-output *log-stream*)
   (let ((diags (handler-case (parse-document text)
                  (error (e)
-                   (format *error-output* "parser error: ~a~%" e)
+                   (format *log-stream* "parser error: ~a~%" e)
+                   (force-output *log-stream*)
                    '()))))
     (publish-diagnostics server uri diags)))
 
@@ -91,13 +113,19 @@
 
 (defun handle-initialize (server params)
   (declare (ignore server params))
+  (format *log-stream* "handle-initialize~%") (force-output *log-stream*)
+  ;; Minimal capabilities — only textDocumentSync, no completionProvider.
+  ;; Diagnostics don't need a capability declaration; they're a server→client
+  ;; notification (textDocument/publishDiagnostics) the server can send any
+  ;; time. completionProvider may have triggered a typed-parser error in
+  ;; lem-lsp-mode that silently broke the post-initialize callback chain,
+  ;; preventing textDocument/didOpen from firing.
   (ht "capabilities"
-      (ht "textDocumentSync" 1                 ; full sync
-          "completionProvider"
-          (ht "triggerCharacters" '("."))))) ; list → JSON array
+      (ht "textDocumentSync" 1)))
 
 (defun handle-initialized (server params)
   (declare (ignore server params))
+  (format *log-stream* "handle-initialized~%") (force-output *log-stream*)
   nil)
 
 (defun handle-shutdown (server params)
@@ -109,18 +137,49 @@
   (uiop:quit 0))
 
 (defun handle-did-open (server params)
-  (let* ((td (get-field params "textDocument"))
-         (uri (get-field td "uri"))
-         (text (get-field td "text"))
-         (version (get-field td "version")))
-    (setf (gethash uri *documents*)
-          (make-document :uri uri :text text :version version
-                         :symbols (handler-case (scan-symbols text)
-                                    (error (e)
-                                      (format *error-output* "scan-symbols error: ~a~%" e)
-                                      '()))))
-    (reparse-and-publish server uri text)
-    nil))
+  (format *log-stream* "handle-did-open: entered~%") (force-output *log-stream*)
+  (format *log-stream* "  params type: ~a~%" (type-of params)) (force-output *log-stream*)
+  (when (hash-table-p params)
+    (format *log-stream* "  params keys: ~a~%"
+            (loop for k being the hash-keys of params collect k))
+    (force-output *log-stream*))
+  (handler-case
+      (let* ((td (get-field params "textDocument"))
+             (uri (get-field td "uri"))
+             (text (get-field td "text"))
+             (version (get-field td "version")))
+        (format *log-stream* "handle-did-open: uri=~a text-len=~a~%" uri (length text))
+    (force-output *log-stream*)
+    (format *log-stream* "handle-did-open: about to call scan-symbols~%")
+    (force-output *log-stream*)
+    (let ((symbols
+           (handler-case (scan-symbols text)
+             (error (e)
+               (format *log-stream* "scan-symbols ERROR: ~a~%" e)
+               (force-output *log-stream*)
+               '()))))
+      (format *log-stream* "handle-did-open: scan-symbols returned~%")
+      (force-output *log-stream*)
+      (format *log-stream* "handle-did-open: scanned ~a symbols~%" (length symbols))
+      (force-output *log-stream*)
+      (handler-case
+          (setf (gethash uri *documents*)
+                (make-document :uri uri :text text :version version :symbols symbols))
+        (error (e)
+          (format *log-stream* "make-document/gethash ERROR: ~a~%" e)
+          (force-output *log-stream*))))
+    (format *log-stream* "handle-did-open: about to reparse-and-publish~%")
+    (force-output *log-stream*)
+    (handler-case (reparse-and-publish server uri text)
+      (error (e)
+        (format *log-stream* "reparse-and-publish ERROR: ~a~%" e)
+        (force-output *log-stream*)))
+    (format *log-stream* "handle-did-open: done~%") (force-output *log-stream*)
+    nil)
+    (error (e)
+      (format *log-stream* "handle-did-open ESCAPED with: ~a~%" e)
+      (force-output *log-stream*)
+      nil)))
 
 (defun handle-did-change (server params)
   (let* ((td (get-field params "textDocument"))
@@ -133,7 +192,7 @@
       (setf (document-text doc) new-text
             (document-symbols doc) (handler-case (scan-symbols new-text)
                                      (error (e)
-                                       (format *error-output* "scan error: ~a~%" e)
+                                       (format *log-stream* "scan error: ~a~%" e)
                                        '())))
       (reparse-and-publish server uri new-text))
     nil))
@@ -163,7 +222,7 @@
                               (complete-at (document-text doc) offset
                                            (document-symbols doc))
                             (error (e)
-                              (format *error-output* "complete-at error: ~a~%" e)
+                              (format *log-stream* "complete-at error: ~a~%" e)
                               '()))))
         (setf items
               (mapcar (lambda (label)
@@ -183,6 +242,13 @@
   ;; (the LSP transport), corrupting the JSON-RPC stream and causing
   ;; the lem client to hang waiting for a valid response.
   #+sbcl (sb-ext:disable-debugger)
+  ;; Open a dedicated log file (not *error-output*, which has thread races).
+  (ensure-directories-exist "var/log/")
+  (setf *log-stream*
+        (open "var/log/lsp-trace.log"
+              :direction :output
+              :if-exists :supersede
+              :if-does-not-exist :create))
   (let ((server (jsonrpc:make-server)))
     (jsonrpc:expose server "initialize"          (lambda (p) (handle-initialize server p)))
     (jsonrpc:expose server "initialized"         (lambda (p) (handle-initialized server p)))
