@@ -172,7 +172,9 @@
     (let ((p (lem:buffer-end-point buf)))
       (lem:insert-string
        p (format nil "~vA ~vA ~vA~%"
-                 8 (format nil "~a" pc)
+                 8 (if (numberp pc)
+                       (format nil "~F" pc)        ; "3.0", not "3.0f0"
+                       (format nil "~a" pc))
                  15 result-string
                  10 (or cpu-string "--"))))))
 
@@ -307,7 +309,7 @@
          (write-status-line (sweep-state-buffer state)
                             (sweep-state-done state)
                             (sweep-state-total state)
-                            (format nil "pc=~a" pc))
+                            (format nil "pc=~F" pc))
          (handler-case
              (let* ((out-path (sweep-output-path
                                (sweep-state-template-path state) pc))

@@ -276,6 +276,19 @@
         (ok (search "3.0" text))
         (ok (search "unreachable" text))
         (ok (search "0.42" text)))))
+  (testing "write-row formats single-float pc as '3.0', NOT '3.0f0'"
+    ;; Regression: princ-to-string / ~A on a single-float emits the
+    ;; SBCL type suffix; downstream consumers (the dir name in
+    ;; sweep-output-path, and phaverlite-sweep-plot-row's lookup) use
+    ;; ~F formatting and the row text MUST match or the lookup fails.
+    (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
+      (lem:erase-buffer buf)
+      (phaverlite-mode/sweep::write-header
+       buf "x.pha" 3.0 -0.05 1.0 41)
+      (phaverlite-mode/sweep::write-row buf 3.0 :unreachable "0.42")
+      (let ((text (lem:points-to-string (lem:buffer-start-point buf)
+                                         (lem:buffer-end-point buf))))
+        (ng (search "3.0f0" text) "no float-type suffix in row pc column"))))
   (testing "finalize rewrites status line to summary"
     (let* ((buf (lem:make-buffer "*sweep-test*" :temporary t)))
       (lem:erase-buffer buf)
