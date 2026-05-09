@@ -441,3 +441,78 @@
         ;; Some progress made before kill — done count is in the status
         ;; line as [N/5 done] for some N <= 5.
         (ok (search "[" text))))))
+
+(defun make-temp-plot-dir-with-files (&key (with-reach t) (with-inv t))
+  "Create a fresh temp dir with optional out_reach + out_inv files.
+   Returns the dir as an absolute pathname."
+  (let* ((dir (merge-pathnames
+               (format nil "phaverlite-plot-test-~a-~a/"
+                       (get-universal-time) (random 1000000))
+               (uiop:temporary-directory))))
+    (ensure-directories-exist dir)
+    (when with-reach
+      (with-open-file (s (merge-pathnames "out_reach" dir)
+                         :direction :output :if-exists :supersede)
+        (write-string "1 2 0
+3 4 0
+" s)))
+    (when with-inv
+      (with-open-file (s (merge-pathnames "out_inv" dir)
+                         :direction :output :if-exists :supersede)
+        (write-string "0 0 0
+5 5 0
+" s)))
+    dir))
+
+(defun stub-message-collector ()
+  "Stub lem:message to collect messages into a list. Returns two values:
+   (1) a thunk to install the stub, (2) a thunk to read the collected
+   list and uninstall."
+  (let ((collected '())
+        (original (fdefinition 'lem:message)))
+    (values
+     (lambda ()
+       #+sbcl (sb-ext:without-package-locks
+                (setf (fdefinition 'lem:message)
+                      (lambda (fmt &rest args)
+                        (push (apply #'format nil fmt args) collected))))
+       #-sbcl (setf (fdefinition 'lem:message)
+                    (lambda (fmt &rest args)
+                      (push (apply #'format nil fmt args) collected))))
+     (lambda ()
+       (prog1 (nreverse collected)
+         #+sbcl (sb-ext:without-package-locks
+                  (setf (fdefinition 'lem:message) original))
+         #-sbcl (setf (fdefinition 'lem:message) original))))))
+
+(deftest plot-render
+  (testing "both files present → plot.png is written"
+    (let ((dir (make-temp-plot-dir-with-files :with-reach t :with-inv t)))
+      (multiple-value-bind (install collect) (stub-message-collector)
+        (funcall install)
+        (let ((result (phaverlite-mode/plot::render-plot-dir dir)))
+          (let ((messages (funcall collect)))
+            (declare (ignore messages))
+            (ok (probe-file (merge-pathnames "plot.png" dir)))
+            (ok (truename result))                         ; non-NIL return
+            (ok (search "FAKE GRAPH OUTPUT"
+                        (uiop:read-file-string
+                         (merge-pathnames "plot.png" dir)))))))))
+  (testing "out_reach missing → message + return NIL + no plot.png"
+    (let ((dir (make-temp-plot-dir-with-files :with-reach nil :with-inv t)))
+      (multiple-value-bind (install collect) (stub-message-collector)
+        (funcall install)
+        (let ((result (phaverlite-mode/plot::render-plot-dir dir)))
+          (let ((messages (funcall collect)))
+            (ok (null result))
+            (ok (some (lambda (m) (search "out_reach" m)) messages))
+            (ok (not (probe-file (merge-pathnames "plot.png" dir)))))))))
+  (testing "out_inv missing → message + return NIL + no plot.png"
+    (let ((dir (make-temp-plot-dir-with-files :with-reach t :with-inv nil)))
+      (multiple-value-bind (install collect) (stub-message-collector)
+        (funcall install)
+        (let ((result (phaverlite-mode/plot::render-plot-dir dir)))
+          (let ((messages (funcall collect)))
+            (ok (null result))
+            (ok (some (lambda (m) (search "out_inv" m)) messages))
+            (ok (not (probe-file (merge-pathnames "plot.png" dir))))))))))
