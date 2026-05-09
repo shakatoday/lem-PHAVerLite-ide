@@ -795,7 +795,10 @@ Append to `tests/main.lisp`:
 (deftest sweep-engine
   (testing "3-value sweep produces 3 rows + finished summary"
     (let ((path (make-temp-pha-template "pc := __PC__;")))
-      (sb-ext:with-environment-variables
+      ;; sb-ext:with-environment-variables is not exported by the
+      ;; SBCL build on this machine; tests/main.lisp defines a small
+      ;; with-env-vars macro using sb-posix:setenv/unsetenv instead.
+      (with-env-vars
           (("FAKE_PHAVERLITE_MODE" "sweep")
            ("FAKE_RESULT" "unreachable")
            ("FAKE_CPU" "0.42"))
@@ -1013,7 +1016,10 @@ Append to the `sweep-engine` deftest:
 ```lisp
   (testing "skip case: cancel-flag :skip marks one row (cancelled), continues"
     (let ((path (make-temp-pha-template "pc := __PC__;")))
-      (sb-ext:with-environment-variables
+      ;; sb-ext:with-environment-variables is not exported by the
+      ;; SBCL build on this machine; tests/main.lisp defines a small
+      ;; with-env-vars macro using sb-posix:setenv/unsetenv instead.
+      (with-env-vars
           (("FAKE_PHAVERLITE_MODE" "sweep")
            ("FAKE_RESULT" "unreachable")
            ("FAKE_CPU" "0.10"))
@@ -1032,7 +1038,10 @@ Append to the `sweep-engine` deftest:
           (ok (search "finished" text))))))
   (testing "kill case: cancel-flag :kill stops at current value, summary"
     (let ((path (make-temp-pha-template "pc := __PC__;")))
-      (sb-ext:with-environment-variables
+      ;; sb-ext:with-environment-variables is not exported by the
+      ;; SBCL build on this machine; tests/main.lisp defines a small
+      ;; with-env-vars macro using sb-posix:setenv/unsetenv instead.
+      (with-env-vars
           (("FAKE_PHAVERLITE_MODE" "sweep")
            ("FAKE_RESULT" "unreachable")
            ("FAKE_CPU" "0.10"))
