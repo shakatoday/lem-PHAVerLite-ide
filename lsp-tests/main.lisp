@@ -57,3 +57,62 @@ end")))
       (ok (>= (length diags) 1))
       ;; The second `end` is an orphan.
       )))
+
+(defun symbols-of-kind (text kind)
+  "Helper: return list of symbol-info names of KIND from scanning TEXT."
+  (mapcar #'phaverlite-lsp/symbols:symbol-info-name
+          (remove-if-not
+           (lambda (s) (eq (phaverlite-lsp/symbols:symbol-info-kind s) kind))
+           (phaverlite-lsp/symbols:scan-symbols text))))
+
+(deftest lsp-symbols
+  (testing "automaton sys → :automaton symbol named 'sys'"
+    (ok (equal '("sys")
+               (symbols-of-kind "automaton sys
+end" :automaton))))
+  (testing "loc cool: inside an automaton → :location"
+    (ok (equal '("cool")
+               (symbols-of-kind "automaton h
+loc cool:
+end" :location))))
+  (testing "contr_var: x, y; → two :var symbols"
+    (ok (equal '("x" "y")
+               (symbols-of-kind "automaton h
+contr_var: x, y;
+end" :var))))
+  (testing "synclabs: tau, tick; → two :sync symbols"
+    (ok (equal '("tau" "tick")
+               (symbols-of-kind "automaton h
+synclabs: tau, tick;
+end" :sync))))
+  (testing "top-level pc := 0.5; → :scalar"
+    (ok (equal '("pc")
+               (symbols-of-kind "automaton h
+end
+pc := 0.5;" :scalar))))
+  (testing "top-level bad = sys.{...} → :region"
+    (ok (equal '("bad")
+               (symbols-of-kind "automaton sys
+end
+bad = sys.{cool & x >= 20};" :region))))
+  (testing "top-level reg = sys.reachable; → :region"
+    (ok (member "reg"
+                (symbols-of-kind "automaton sys
+end
+reg = sys.reachable;" :region)
+                :test #'equal)))
+  (testing "top-level check = sys.is_reachable(bad); → :region"
+    (ok (member "check"
+                (symbols-of-kind "automaton sys
+end
+check = sys.is_reachable(bad);" :region)
+                :test #'equal)))
+  (testing "user binding INSIDE automaton…end is NOT collected as user binding"
+    (let ((scalars (symbols-of-kind "automaton h
+foo := 99;
+end" :scalar))
+          (regions (symbols-of-kind "automaton h
+foo := 99;
+end" :region)))
+      (ok (null scalars))
+      (ok (null regions)))))
