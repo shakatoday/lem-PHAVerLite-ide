@@ -1,0 +1,53 @@
+// examples/cycler.pha
+//
+// A 2D PHAVer model of a periodic two-mode system, with a
+// reachability check that demonstrates pc-sweep's motivating use
+// case: at coarse pc the over-approximation falsely says the bad
+// region is reachable; sweeping pc finer reveals the threshold
+// below which the answer flips to the correct "unreachable".
+//
+// Two locations (low / high) with continuous decay/ramp dynamics on
+// a value v and a free-running clock t. The bad region pins t to a
+// precise instant where the actual reach set excludes the v range
+// being checked — so any sweep row reporting "reachable" at coarse
+// pc is a false positive.
+//
+// Try:
+//   C-x C-f examples/cycler.pha
+//   C-c C-s, accept default 3.0 -0.05 1.0
+// Expect: rows at large pc show "reachable", flipping to
+// "unreachable" at smaller pc — the threshold pc is what the sweep
+// is looking for.
+
+automaton sys
+   contr_var: t, v;
+   synclabs: up, down;
+
+   loc low:
+      while v >= 18 & 0 <= t & t <= 10
+      wait { v' == -0.1*v & t' == 1 }
+      when v <= 19 sync up
+      do { v' == v & t' == t } goto high;
+
+   loc high:
+      while v >= 18 & v <= 22 & 0 <= t & t <= 10
+      wait { v' == 5 - 0.1*v & t' == 1 }
+      when v >= 21 sync down
+      do { v' == v & t' == t } goto low;
+
+   initially: low & v == 22 & t == 0;
+end
+
+sys.add_label(tau);
+
+pc := __PC__;
+sys.set_partition_constraints((t,pc),(v,pc),tau);
+
+bad = sys.{low & v >= 20 & t == 0.98};
+check = sys.is_reachable(bad);
+
+reg = sys.reachable;
+reg.print("out_reach", 2);
+
+inv = sys.get_invariants;
+inv.print("out_inv", 2);

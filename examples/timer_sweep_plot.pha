@@ -1,0 +1,42 @@
+// examples/timer_sweep_plot.pha
+//
+// Minimal 2D PHAVer model that exercises BOTH the pc-sweep workflow
+// (sub-project C: __PC__ placeholder) AND the plot workflow
+// (sub-project D: .print(out_reach) / .print(out_inv) so the per-pc
+// directories accumulate plottable side-effect files).
+//
+// Use it as a smoke-test fixture for the IDE:
+//   1. Open this file in lem.
+//   2. C-c C-s, accept default range -> sweep fills the results buffer.
+//   3. Move point onto a row, press p -> per-pc reach-set plot opens
+//      in Preview.app.
+//   4. Or C-c C-p on this buffer for a single standalone plot.
+//
+// Two coupled variables (t, x) so the rendered plot is 2D and visual.
+
+automaton timer
+   contr_var: t, x;
+   synclabs: tick;
+
+   loc running:
+      while 0 <= t & t <= 10 & 0 <= x & x <= 10
+      wait { t' == 1 & x' == 0.5 }
+      when t >= 1 sync tick
+      do { t' == 0 & x' == x } goto running;
+
+   initially: running & t == 0 & x == 0;
+end
+
+timer.add_label(tau);
+
+over = timer.{running & x >= 5};
+
+pc := __PC__;
+timer.set_partition_constraints((t,pc),(x,pc),tau);
+check = timer.is_reachable(over);
+
+reg = timer.reachable;
+reg.print("out_reach", 2);
+
+inv = timer.get_invariants;
+inv.print("out_inv", 2);
