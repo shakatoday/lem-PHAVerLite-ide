@@ -66,3 +66,35 @@
                   (>= v (- stop eps))
                   (<= v (+ stop eps)))
         collect v))
+
+;;; --- template substitution -----------------------------------------------
+
+(defun materialize-template (template-path output-path pc)
+  "Read TEMPLATE-PATH, substitute every occurrence of '__PC__' with the
+   string form of PC, and write the result to OUTPUT-PATH. Returns
+   OUTPUT-PATH on success. Raises ERROR if the template doesn't contain
+   '__PC__' (defense in depth — the command should already have checked)."
+  (let ((source (uiop:read-file-string template-path)))
+    (unless (search "__PC__" source)
+      (error "Template ~a has no __PC__ placeholder" template-path))
+    (ensure-directories-exist output-path)
+    (let* ((pc-string (princ-to-string pc))
+           (rendered (cl-ppcre-substitute-or-string source "__PC__" pc-string)))
+      (with-open-file (s output-path :direction :output :if-exists :supersede)
+        (write-string rendered s))
+      output-path)))
+
+(defun cl-ppcre-substitute-or-string (haystack needle replacement)
+  "Substitute every occurrence of NEEDLE in HAYSTACK with REPLACEMENT.
+   Plain string substitution — no regex. We avoid pulling in cl-ppcre
+   for one substitution; the misleading name is for future-proofing if
+   someone wants to swap in regex later."
+  (with-output-to-string (out)
+    (loop with i = 0
+          with n-len = (length needle)
+          for j = (search needle haystack :start2 i)
+          while j
+          do (write-string haystack out :start i :end j)
+             (write-string replacement out)
+             (setf i (+ j n-len))
+          finally (write-string haystack out :start i))))

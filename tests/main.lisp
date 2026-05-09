@@ -200,3 +200,25 @@
     (ok (signals (phaverlite-mode/sweep::generate-range 3.0 0.5 1.0))))
   (testing "sign-mismatched step raises (start=1 step=-0.5 stop=3)"
     (ok (signals (phaverlite-mode/sweep::generate-range 1.0 -0.5 3.0)))))
+
+(deftest sweep-materialize
+  (testing "writes substituted template to output path"
+    (let* ((tmpl-path (merge-pathnames "phaverlite-tmpl.pha"
+                                       (uiop:temporary-directory)))
+           (out-path  (merge-pathnames "phaverlite-out.pha"
+                                       (uiop:temporary-directory))))
+      (with-open-file (s tmpl-path :direction :output :if-exists :supersede)
+        (write-string "pc := __PC__;" s))
+      (phaverlite-mode/sweep::materialize-template tmpl-path out-path 1.25)
+      (ok (string= "pc := 1.25;"
+                   (uiop:read-file-string out-path)))))
+  (testing "raises when template lacks __PC__"
+    (let* ((tmpl-path (merge-pathnames "phaverlite-bad.pha"
+                                       (uiop:temporary-directory)))
+           (out-path  (merge-pathnames "phaverlite-bad-out.pha"
+                                       (uiop:temporary-directory))))
+      (with-open-file (s tmpl-path :direction :output :if-exists :supersede)
+        (write-string "no placeholder here" s))
+      (ok (signals
+              (phaverlite-mode/sweep::materialize-template
+               tmpl-path out-path 1.0))))))
