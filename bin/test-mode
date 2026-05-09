@@ -39,3 +39,12 @@ qlot exec sbcl \
   --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
   --eval '(ql:quickload :phaverlite-mode-tests :silent t)' \
   --eval '(uiop:quit (if (rove:run :phaverlite-mode-tests) 0 1))'
+
+# --- second suite: phaverlite-lsp-tests (server-side, no lem deps) ---
+echo
+echo "=== phaverlite-lsp-tests ==="
+qlot exec sbcl \
+  --noinform --no-userinit --no-sysinit \
+  --eval '(pushnew (truename ".") asdf:*central-registry* :test #'\''equal)' \
+  --eval '(ql:quickload :phaverlite-lsp-tests :silent t)' \
+  --eval '(uiop:quit (if (rove:run :phaverlite-lsp-tests) 0 1))'
