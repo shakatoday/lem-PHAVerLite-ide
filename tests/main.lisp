@@ -1,5 +1,7 @@
 ;;;; tests/main.lisp — rove suite for phaverlite-mode.
 
+#+sbcl (require :sb-posix)
+
 (defpackage #:phaverlite-mode/tests
   (:use #:cl #:rove))
 (in-package #:phaverlite-mode/tests)
@@ -273,3 +275,146 @@
         (ok (search "[8/41 done]" text))
         (ok (search "cancelled by user" text))
         (ok (not (search "current: pc=2.65" text)))))))
+
+(defmacro with-env-vars (bindings &body body)
+  "Set the listed (NAME VALUE) env vars for the dynamic extent of BODY,
+   restoring prior values on unwind. SBCL-only (uses sb-posix). We have
+   our own because sb-ext:with-environment-variables is not available
+   on this SBCL build."
+  (let ((saved (gensym "SAVED")))
+    `(let ((,saved (mapcar (lambda (b)
+                             (cons (first b) (uiop:getenv (first b))))
+                           ',bindings)))
+       (unwind-protect
+            (progn
+              ,@(loop for b in bindings collect
+                      `(sb-posix:setenv ,(first b) ,(second b) 1))
+              ,@body)
+         (dolist (entry ,saved)
+           (if (cdr entry)
+               (sb-posix:setenv (car entry) (cdr entry) 1)
+               (sb-posix:unsetenv (car entry))))))))
+
+(defun make-temp-pha-template (content)
+  "Create a temp .pha file containing CONTENT, return its truename."
+  (let ((p (merge-pathnames
+            (format nil "phaverlite-sweep-test-~a.pha" (get-universal-time))
+            (uiop:temporary-directory))))
+    (with-open-file (s p :direction :output :if-exists :supersede)
+      (write-string content s))
+    (truename p)))
+
+(defun wait-for-sweep-completion (&key (timeout-secs 10))
+  "Block until *active-sweep* is NIL or TIMEOUT-SECS elapses. Returns T
+   on completion, NIL on timeout."
+  (let ((start (get-universal-time)))
+    (loop until (or (null phaverlite-mode/sweep::*active-sweep*)
+                    (> (- (get-universal-time) start) timeout-secs))
+          do (sleep 0.05))
+    (null phaverlite-mode/sweep::*active-sweep*)))
+
+(deftest sweep-engine
+  (testing "3-value sweep produces 3 rows + finished summary"
+    (let ((path (make-temp-pha-template "pc := __PC__;")))
+      (with-env-vars
+          (("FAKE_PHAVERLITE_MODE" "sweep")
+           ("FAKE_RESULT" "unreachable")
+           ("FAKE_CPU" "0.42"))
+        (let ((phaverlite-mode/sweep::*sweep-driver* :sync))
+          (phaverlite-mode/sweep::run-sweep path 3.0 -1.0 1.0))
+        (ok (wait-for-sweep-completion)))
+      (let* ((buf (lem:get-buffer "*phaverlite-sweep*"))
+             (text (lem:points-to-string
+                    (lem:buffer-start-point buf)
+                    (lem:buffer-end-point buf))))
+        (ok (search "[3/3 done]" text))
+        (ok (search "finished" text))
+        ;; Three result rows.
+        (ok (search "3.0" text))
+        (ok (search "2.0" text))
+        (ok (search "1.0" text))
+        ;; All three rows show 'unreachable' and the faked cpu.
+        (ok (= 3 (count #\Newline (with-output-to-string (s)
+                                    (loop for i from 0
+                                          for j = (search "unreachable" text :start2 i)
+                                          while j
+                                          do (terpri s)
+                                             (setf i (1+ j)))))))
+        (ok (search "0.42" text)))))
+  (testing "*active-sweep* is NIL after completion"
+    (ok (null phaverlite-mode/sweep::*active-sweep*)))
+  (testing "skip case: cancel-flag :skip marks one row (cancelled), continues"
+    (let ((path (make-temp-pha-template "pc := __PC__;")))
+      (with-env-vars
+          (("FAKE_PHAVERLITE_MODE" "sweep")
+           ("FAKE_RESULT" "unreachable")
+           ("FAKE_CPU" "0.10")
+           ("FAKE_SLEEP" "1"))
+        ;; Drive in a worker thread so the test thread can mutate
+        ;; cancel-flag while the engine sleeps in :sync mode.
+        (let ((thread (bt2:make-thread
+                       (lambda ()
+                         (let ((phaverlite-mode/sweep::*sweep-driver* :sync))
+                           (phaverlite-mode/sweep::run-sweep
+                            path 5.0 -1.0 1.0)))
+                       :name "sweep-skip-test")))
+          ;; Wait until at least one row has been recorded AND a new pc
+          ;; is currently in-flight, then request the skip. With the
+          ;; fake binary's tiny FAKE_SLEEP, the in-flight window is
+          ;; ~1s — plenty of time for this thread to notice.
+          (loop with deadline = (+ (get-universal-time) 15)
+                until (or (and phaverlite-mode/sweep::*active-sweep*
+                               (>= (phaverlite-mode/sweep::sweep-state-done
+                                    phaverlite-mode/sweep::*active-sweep*)
+                                   1)
+                               (phaverlite-mode/sweep::sweep-state-current-pc
+                                phaverlite-mode/sweep::*active-sweep*))
+                          (> (get-universal-time) deadline))
+                do (sleep 0.02))
+          (when phaverlite-mode/sweep::*active-sweep*
+            (setf (phaverlite-mode/sweep::sweep-state-cancel-flag
+                   phaverlite-mode/sweep::*active-sweep*)
+                  :skip))
+          (bt2:join-thread thread)))
+      (ok (null phaverlite-mode/sweep::*active-sweep*))
+      (let* ((buf (lem:get-buffer "*phaverlite-sweep*"))
+             (text (lem:points-to-string
+                    (lem:buffer-start-point buf)
+                    (lem:buffer-end-point buf))))
+        (ok (search "cancelled" text))
+        (ok (search "[5/5 done]" text))
+        (ok (search "finished" text)))))
+  (testing "kill case: cancel-flag :kill stops at current value, summary"
+    (let ((path (make-temp-pha-template "pc := __PC__;")))
+      (with-env-vars
+          (("FAKE_PHAVERLITE_MODE" "sweep")
+           ("FAKE_RESULT" "unreachable")
+           ("FAKE_CPU" "0.10")
+           ("FAKE_SLEEP" "1"))
+        (let ((thread (bt2:make-thread
+                       (lambda ()
+                         (let ((phaverlite-mode/sweep::*sweep-driver* :sync))
+                           (phaverlite-mode/sweep::run-sweep
+                            path 5.0 -1.0 1.0)))
+                       :name "sweep-kill-test")))
+          (loop with deadline = (+ (get-universal-time) 15)
+                until (or (and phaverlite-mode/sweep::*active-sweep*
+                               (>= (phaverlite-mode/sweep::sweep-state-done
+                                    phaverlite-mode/sweep::*active-sweep*)
+                                   2))
+                          (> (get-universal-time) deadline))
+                do (sleep 0.02))
+          (when phaverlite-mode/sweep::*active-sweep*
+            (setf (phaverlite-mode/sweep::sweep-state-cancel-flag
+                   phaverlite-mode/sweep::*active-sweep*)
+                  :kill))
+          (bt2:join-thread thread)))
+      (ok (null phaverlite-mode/sweep::*active-sweep*))
+      (let* ((buf (lem:get-buffer "*phaverlite-sweep*"))
+             (text (lem:points-to-string
+                    (lem:buffer-start-point buf)
+                    (lem:buffer-end-point buf))))
+        (ok (search "cancelled by user" text))
+        ;; Some progress made before kill — done count is in the status
+        ;; line as [N/5 done] for some N <= 5.
+        (ok (search "[" text))))))

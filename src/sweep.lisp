@@ -174,3 +174,178 @@
   (write-status-line buf done total
                      (if cancelled-p "cancelled by user" "finished"))
   (setf (lem:buffer-read-only-p buf) t))
+
+;;; --- sweep state + engine -----------------------------------------------
+
+(defvar *active-sweep* nil
+  "SWEEP-STATE struct describing the in-flight sweep, or NIL when idle.
+   Mutated only by the engine and the skip/cancel commands.")
+
+(defstruct sweep-state
+  template-path
+  output-path                       ; var/sweep/<basename>.pha (overwritten)
+  values                            ; remaining pc values
+  total                             ; original count
+  done                              ; count of completed values
+  current-pc                        ; the value currently running, or NIL
+  current-process                   ; uiop process-info, or NIL
+  cancel-flag                       ; :skip, :kill, or NIL
+  buffer                            ; *phaverlite-sweep* buffer
+  timer)                            ; lem timer driving iteration
+
+(defparameter *poll-interval-ms* 50)
+
+(defparameter *sweep-driver* :timer
+  "One of :timer (default; poll via lem:start-timer) or :sync (drive the
+   loop synchronously by recursively calling sweep-tick with a small
+   sleep). The :sync mode exists so the rove suite — which runs under
+   `qlot exec sbcl --script` without an editor frame — can drive the
+   sweep deterministically without depending on lem's timer-thread
+   firing in a headless image.")
+
+(defun sweep-output-path (template-path)
+  "Where the materialized .pha goes — var/sweep/<basename>.pha, overwritten
+   per iteration."
+  (let* ((basename (pathname-name template-path))
+         (ext (pathname-type template-path))
+         (rel (format nil "var/sweep/~a.~a" basename (or ext "pha"))))
+    (merge-pathnames rel (uiop:getcwd))))
+
+(defun start-next-iteration (state)
+  "Schedule the next tick of the sweep loop. Under :timer driver, uses
+   lem:start-timer for a one-shot poll. Under :sync driver, sleeps the
+   poll interval and calls sweep-tick directly (used by tests)."
+  (ecase *sweep-driver*
+    (:timer
+     (setf (sweep-state-timer state)
+           (lem:start-timer
+            (lem:make-timer (lambda () (sweep-tick state))
+                            :name "phaverlite-sweep-tick")
+            *poll-interval-ms*)))
+    (:sync
+     (sleep (/ *poll-interval-ms* 1000.0))
+     (sweep-tick state))))
+
+(defun sweep-tick (state)
+  "One tick of the sweep loop. Either advances to the next pc value (if
+   no current-process), or polls the current process for completion."
+  ;; Stop the previous one-shot before doing anything.
+  (when (sweep-state-timer state)
+    (lem:stop-timer (sweep-state-timer state))
+    (setf (sweep-state-timer state) nil))
+  (let ((flag (sweep-state-cancel-flag state)))
+    (cond
+      ;; Kill: terminate, finalize, exit.
+      ((eq flag :kill)
+       (when (sweep-state-current-process state)
+         (ignore-errors
+          (uiop:terminate-process (sweep-state-current-process state)))
+         (setf (sweep-state-current-process state) nil))
+       (finalize-sweep state t))
+      ;; Skip: terminate current, mark cancelled row, advance. If there's
+      ;; no in-flight pc value (skip raced past an iteration boundary),
+      ;; just drop the flag and resume — nothing to cancel.
+      ((eq flag :skip)
+       (cond
+         ((sweep-state-current-pc state)
+          (when (sweep-state-current-process state)
+            (ignore-errors
+             (uiop:terminate-process (sweep-state-current-process state)))
+            (setf (sweep-state-current-process state) nil))
+          (write-row (sweep-state-buffer state)
+                     (sweep-state-current-pc state)
+                     :cancelled "--")
+          (incf (sweep-state-done state))
+          (setf (sweep-state-current-pc state) nil
+                (sweep-state-cancel-flag state) nil)
+          (start-next-iteration state))
+         (t
+          (setf (sweep-state-cancel-flag state) nil)
+          (start-next-iteration state))))
+      ;; Process running: poll for exit.
+      ((sweep-state-current-process state)
+       (let ((proc (sweep-state-current-process state)))
+         (cond
+           ((uiop:process-alive-p proc)
+            (start-next-iteration state))    ; re-poll next tick
+           (t                                  ; process done — read + record
+            (let* ((stream (uiop:process-info-output proc))
+                   (output (with-output-to-string (s)
+                             (loop for line = (read-line stream nil nil)
+                                   while line
+                                   do (write-line line s))))
+                   (result (parse-result output))
+                   (cpu (parse-cpu-time output)))
+              (uiop:wait-process proc)
+              (write-row (sweep-state-buffer state)
+                         (sweep-state-current-pc state)
+                         result cpu)
+              (incf (sweep-state-done state))
+              (setf (sweep-state-current-process state) nil
+                    (sweep-state-current-pc state) nil)
+              (start-next-iteration state))))))
+      ;; No process; spawn next pc value or finish.
+      ((null (sweep-state-values state))
+       (finalize-sweep state nil))
+      (t
+       (let ((pc (pop (sweep-state-values state))))
+         (setf (sweep-state-current-pc state) pc)
+         (write-status-line (sweep-state-buffer state)
+                            (sweep-state-done state)
+                            (sweep-state-total state)
+                            (format nil "pc=~a" pc))
+         (handler-case
+             (let ((out-path (sweep-state-output-path state)))
+               (materialize-template (sweep-state-template-path state)
+                                     out-path pc)
+               (let ((proc (uiop:launch-program
+                            (list "phaverlite" (namestring out-path))
+                            :output :stream :error-output :output)))
+                 (setf (sweep-state-current-process state) proc)
+                 (start-next-iteration state)))
+           (error (e)
+             ;; Materialization or spawn failure: record an error row,
+             ;; abort the sweep cleanly.
+             (write-row (sweep-state-buffer state)
+                        pc :unknown (format nil "err:~a" e))
+             (finalize-sweep state nil))))))))
+
+(defun finalize-sweep (state cancelled-p)
+  "Final cleanup: rewrite status to summary, freeze buffer, clear *active-sweep*."
+  (when (sweep-state-timer state)
+    (lem:stop-timer (sweep-state-timer state))
+    (setf (sweep-state-timer state) nil))
+  (when (lem:bufferp (sweep-state-buffer state))
+    (finalize (sweep-state-buffer state)
+              (sweep-state-done state)
+              (sweep-state-total state)
+              cancelled-p))
+  (setf *active-sweep* nil))
+
+(defun run-sweep (template-path start step stop)
+  "Public engine entry point. Builds the sweep-state, opens the output
+   buffer, writes the header + initial status line, and schedules the
+   first iteration tick. Returns the sweep-state."
+  (let* ((values (generate-range start step stop))
+         (total (length values))
+         (out-path (sweep-output-path template-path))
+         (buf (ensure-sweep-buffer))
+         (state (make-sweep-state
+                 :template-path template-path
+                 :output-path out-path
+                 :values values
+                 :total total
+                 :done 0
+                 :current-pc nil
+                 :current-process nil
+                 :cancel-flag nil
+                 :buffer buf
+                 :timer nil)))
+    (write-header buf template-path start step stop total)
+    (write-status-line buf 0 total "starting…")
+    ;; pop-to-buffer requires a live frontend; tolerate failure in headless
+    ;; rove env (same hack as phaverlite-run-buffer in src/commands.lisp).
+    (ignore-errors (lem:pop-to-buffer buf))
+    (setf *active-sweep* state)
+    (start-next-iteration state)
+    state))
