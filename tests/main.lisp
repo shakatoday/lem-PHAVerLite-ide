@@ -516,3 +516,48 @@
             (ok (null result))
             (ok (some (lambda (m) (search "out_inv" m)) messages))
             (ok (not (probe-file (merge-pathnames "plot.png" dir))))))))))
+
+(defun make-temp-plot-pha-buffer ()
+  "Create a buffer visiting a temp .pha file with arbitrary content
+   (the fake phaverlite ignores the file content; what matters is the
+   buffer-filename)."
+  (let* ((path (merge-pathnames
+                (format nil "phaverlite-plot-cmd-~a-~a.pha"
+                        (get-universal-time) (random 1000000))
+                (uiop:temporary-directory))))
+    (with-open-file (s path :direction :output :if-exists :supersede)
+      (write-string "automaton t end" s))
+    (lem:find-file-buffer path)))
+
+(deftest plot-buffer-command
+  (testing "happy path: phaverlite-plot-buffer creates plot.png"
+    (let ((buf (make-temp-plot-pha-buffer)))
+      (with-env-vars
+          (("FAKE_PHAVERLITE_MODE" "plot"))
+        (multiple-value-bind (install collect) (stub-message-collector)
+          (funcall install)
+          (unwind-protect
+               (with-stubbed-prompt t
+                 (lambda ()
+                   (phaverlite-mode/plot:phaverlite-plot-buffer buf)))
+            (funcall collect))))
+      (let* ((basename (pathname-name (lem:buffer-filename buf)))
+             (expected-plot (merge-pathnames
+                             (format nil "var/plot/~a/plot.png" basename)
+                             (uiop:getcwd))))
+        (ok (probe-file expected-plot))
+        (ok (search "FAKE GRAPH OUTPUT"
+                    (uiop:read-file-string expected-plot))))))
+  (testing "refuses when *active-sweep* is non-nil"
+    (let ((phaverlite-mode/sweep::*active-sweep*
+            (phaverlite-mode/sweep::make-sweep-state
+             :template-path "x" :template-basename "x"
+             :output-path "x" :values nil :total 0 :done 0
+             :current-pc nil :current-process nil
+             :cancel-flag nil :buffer nil :timer nil))
+          (buf (make-temp-plot-pha-buffer)))
+      (multiple-value-bind (install collect) (stub-message-collector)
+        (funcall install)
+        (phaverlite-mode/plot:phaverlite-plot-buffer buf)
+        (let ((messages (funcall collect)))
+          (ok (some (lambda (m) (search "Sweep in progress" m)) messages)))))))
