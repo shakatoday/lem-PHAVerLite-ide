@@ -84,3 +84,8 @@
          (launch-phaverlite path out))))))
 
 (define-key *phaverlite-mode-keymap* "C-c C-c" 'phaverlite-run-buffer)
+
+;; Enter inserts a newline AND auto-indents the new line per calc-indent.
+;; Lem's stock binding (in *global-keymap*) is plain `newline`; we shadow it
+;; in our mode so .pha editing feels like every other modern editor.
+(define-key *phaverlite-mode-keymap* "Return" 'lem/language-mode:newline-and-indent)
