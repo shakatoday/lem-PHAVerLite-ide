@@ -10,4 +10,5 @@
   :components ((:file "syntax")
                (:file "indent")
                (:file "commands")
-               (:file "mode")))
+               (:file "mode")
+               (:file "sweep")))
