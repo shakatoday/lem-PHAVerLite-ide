@@ -45,3 +45,27 @@
   (testing "/* block comment */ uses the comment face"
     (let ((attr (face-at "/* hi */" 0)))
       (ok (eq attr 'lem:syntax-comment-attribute)))))
+
+(defun expected-indent (text line-index)
+  "Make a fresh buffer holding TEXT, move point to the start of the
+   LINE-INDEX'th line (0-based), and call calc-indent. Returns the
+   integer column the line should start at."
+  (let* ((buf (lem:make-buffer "*indent-test*" :temporary t))
+         (point (lem:buffer-point buf)))
+    (lem:erase-buffer buf)
+    (lem:insert-string point text)
+    (lem:move-to-line point (1+ line-index))
+    (lem:line-start point)
+    (phaverlite-mode/indent:calc-indent point)))
+
+(deftest indent
+  (testing "top of file indents to 0"
+    (ok (= 0 (expected-indent "automaton heater" 0))))
+  (testing "line after 'automaton …' indents +4"
+    (ok (= 4 (expected-indent (format nil "automaton heater~%contr_var: t;") 1))))
+  (testing "line after a ': '-terminated header indents +4"
+    (ok (= 4 (expected-indent (format nil "loc cool:~%  while x >= 18") 1))))
+  (testing "line starting with 'end' dedents one step from previous indent"
+    (ok (= 0 (expected-indent (format nil "    while x >= 18~%end") 1))))
+  (testing "blank previous line falls back to nearest non-blank"
+    (ok (= 4 (expected-indent (format nil "loc cool:~%~%  wait { x' == -0.1*x }") 2)))))
