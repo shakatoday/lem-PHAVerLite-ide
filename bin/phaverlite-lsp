@@ -1,0 +1,24 @@
+#!/usr/bin/env zsh
+# bin/phaverlite-lsp — launch the phaverlite LSP server in stdio mode.
+# Spawned by lem-lsp-mode when a .pha buffer opens.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if ! command -v qlot >/dev/null 2>&1; then
+  print -u2 "phaverlite-lsp: 'qlot' not found on PATH."
+  exit 1
+fi
+if [[ ! -d "$REPO/.qlot" ]]; then
+  print -u2 "phaverlite-lsp: $REPO/.qlot/ missing. Run 'qlot install' first."
+  exit 1
+fi
+
+cd "$REPO"
+exec qlot exec sbcl \
+  --noinform --no-userinit --no-sysinit \
+  --eval '(pushnew (truename ".") asdf:*central-registry* :test #'\''equal)' \
+  --eval '(ql:quickload :phaverlite-lsp :silent t)' \
+  --eval '(phaverlite-lsp/main:run)'
