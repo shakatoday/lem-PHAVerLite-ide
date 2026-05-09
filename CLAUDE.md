@@ -193,9 +193,16 @@ world-readable forever. Hard rules for anything that gets staged:
   plot files are reproducible from the `.pha` source; they don't need to
   be committed and may inadvertently contain absolute paths from
   `phaverlite`'s working directory.
-- **Before every commit:** scan the diff for the rules above. A quick
-  `git diff --staged | grep -iE 'users/|/home/|@(icloud|gmail|umass)\.com|password|secret|token|api[_-]?key'`
-  is cheap insurance.
+- **Before every commit:** run `bin/privacy-preflight staged` (or
+  `bin/privacy-preflight unpushed` before pushing). The script greps a
+  baseline pattern (paths, generic email domains, secrets keywords)
+  PLUS any project-specific tokens loaded from `.privacy-patterns`
+  (gitignored sidecar — real names, classmate handles, personal email
+  fragments, etc.). Exits 0 on clean, non-zero on match.
+- **Never inline a grep with sensitive tokens** in committed scripts,
+  docs, plans, or commit messages. The grep pattern itself ends up in
+  git history — defeating the purpose. Always shell out to
+  `bin/privacy-preflight`.
 
 If something sensitive does land in a commit, treat it as compromised:
 rotate the secret, and if it's already pushed, rewrite history with

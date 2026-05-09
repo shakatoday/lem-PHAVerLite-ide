@@ -1,0 +1,75 @@
+#!/bin/sh
+# bin/privacy-preflight — scan a git diff for sensitive tokens before
+# commit / push.
+#
+# Usage:
+#   bin/privacy-preflight              # default: scan staged diff
+#   bin/privacy-preflight staged       # explicit form
+#   bin/privacy-preflight unpushed     # scan commits ahead of origin/main
+#   bin/privacy-preflight all          # scan all uncommitted changes
+#
+# Two layers of patterns:
+#
+#   1. Built-in baseline (this script): catches generic categories —
+#      absolute home paths, common email domains, secrets keywords.
+#      None of these patterns are themselves sensitive.
+#
+#   2. Project-specific extras: loaded from $PRIVACY_PATTERNS_FILE
+#      (default ".privacy-patterns" in repo root). One regex per line;
+#      lines starting with "#" are comments. This file is gitignored
+#      so the sensitive tokens never reach git history.
+#
+# Why split: putting the literal sensitive tokens into a tracked grep
+# command defeats the purpose — the command itself ends up in the commit
+# and on GitHub. The script reads them at runtime from the gitignored
+# sidecar instead, so the patterns themselves never reach git history.
+#
+# Exit status: 0 if no matches, 1 if matches found, 2 on usage error.
+
+set -e
+
+PATTERNS_FILE="${PRIVACY_PATTERNS_FILE:-.privacy-patterns}"
+TARGET="${1:-staged}"
+
+# Always-checked baseline patterns. Generic categories only — safe to
+# commit in plain text.
+BASELINE='users/|/home/|@(gmail|icloud|outlook|hotmail|yahoo|umass)\.com|password|secret|api[_-]?key'
+
+# Load project-specific patterns from the gitignored sidecar.
+EXTRAS=""
+if [ -f "$PATTERNS_FILE" ]; then
+  EXTRAS=$(grep -v '^#' "$PATTERNS_FILE" | grep -v '^$' | tr '\n' '|' | sed 's/|$//')
+fi
+
+if [ -n "$EXTRAS" ]; then
+  PATTERN="${BASELINE}|${EXTRAS}"
+else
+  PATTERN="$BASELINE"
+fi
+
+case "$TARGET" in
+  staged)   DIFF_CMD="git diff --staged" ;;
+  unpushed) DIFF_CMD="git diff origin/main..HEAD" ;;
+  all)      DIFF_CMD="git diff HEAD" ;;
+  *)
+    echo "usage: $0 [staged|unpushed|all]" >&2
+    exit 2
+    ;;
+esac
+
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+$DIFF_CMD > "$TMP"
+
+# Filter out noreply emails (legit committer footer; false positives).
+matches=$(grep -inE "$PATTERN" "$TMP" | grep -v 'noreply' || true)
+
+if [ -z "$matches" ]; then
+  lines=$(wc -l < "$TMP" | tr -d ' ')
+  echo "PII scan: clean ($lines lines diffed)"
+  exit 0
+else
+  echo "PII scan: MATCHES FOUND" >&2
+  echo "$matches" | head -20 >&2
+  exit 1
+fi

@@ -46,6 +46,10 @@ ps3/
 secrets/
 .secrets/
 
+# Project-specific sensitive token patterns for bin/privacy-preflight.
+# Real names, classmate emails, personal handles — never committed.
+.privacy-patterns
+
 # Local PHAVerLite / plotutils run outputs (reproducible from the .pha source).
 /tmp_runs/
 *.out.tmp
