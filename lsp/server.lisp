@@ -37,6 +37,14 @@
      (cdr (assoc key params :test #'equal)))
     (t nil)))
 
+(defun ht (&rest pairs)
+  "Build a string-keyed hash-table (yason → JSON object). PAIRS are
+   alternating KEY VALUE."
+  (let ((h (make-hash-table :test 'equal)))
+    (loop for (k v) on pairs by #'cddr
+          do (setf (gethash k h) v))
+    h))
+
 (defun line-character-to-offset (text line character)
   "LSP positions are 0-based (line, character). Convert to a byte offset
    in TEXT. Clamp to [0, length)."
@@ -55,19 +63,19 @@
   (case sev (:error 1) (:warning 2) (otherwise 3)))
 
 (defun diagnostic->lsp (d)
-  "Convert our DIAGNOSTIC struct → LSP Diagnostic alist (yason-friendly)."
-  `(("range" . (("start" . (("line" . ,(1- (diagnostic-start-line d)))
-                            ("character" . ,(1- (diagnostic-start-col d)))))
-                ("end"   . (("line" . ,(1- (diagnostic-end-line d)))
-                            ("character" . ,(1- (diagnostic-end-col d)))))))
-    ("severity" . ,(severity->lsp (diagnostic-severity d)))
-    ("message"  . ,(diagnostic-message d))
-    ("source"   . "phaverlite-lsp")))
+  "Convert our DIAGNOSTIC struct → LSP Diagnostic hash-table (yason → JSON object)."
+  (ht "range" (ht "start" (ht "line" (1- (diagnostic-start-line d))
+                              "character" (1- (diagnostic-start-col d)))
+                  "end"   (ht "line" (1- (diagnostic-end-line d))
+                              "character" (1- (diagnostic-end-col d))))
+      "severity" (severity->lsp (diagnostic-severity d))
+      "message"  (diagnostic-message d)
+      "source"   "phaverlite-lsp"))
 
 (defun publish-diagnostics (server uri diags)
   (jsonrpc:notify server "textDocument/publishDiagnostics"
-                  `(("uri" . ,uri)
-                    ("diagnostics" . ,(mapcar #'diagnostic->lsp diags)))))
+                  (ht "uri" uri
+                      "diagnostics" (mapcar #'diagnostic->lsp diags))))
 
 (defun reparse-and-publish (server uri text)
   (let ((diags (handler-case (parse-document text)
@@ -77,21 +85,24 @@
     (publish-diagnostics server uri diags)))
 
 ;;; --- handlers ----------------------------------------------------------
+;;; Every handler returns a hash-table (encoded as a JSON object) or NIL.
+;;; LSP "no result" notifications return NIL. Errors are caught at the
+;;; top level (run-server's handler-bind), never reach the SBCL debugger.
 
 (defun handle-initialize (server params)
   (declare (ignore server params))
-  `(("capabilities"
-     . (("textDocumentSync" . 1)            ; full sync
-        ("completionProvider"
-         . (("triggerCharacters" . ("."))))))))
+  (ht "capabilities"
+      (ht "textDocumentSync" 1                 ; full sync
+          "completionProvider"
+          (ht "triggerCharacters" '("."))))) ; list → JSON array
 
 (defun handle-initialized (server params)
   (declare (ignore server params))
-  :null)
+  nil)
 
 (defun handle-shutdown (server params)
   (declare (ignore server params))
-  :null)
+  nil)
 
 (defun handle-exit (server params)
   (declare (ignore server params))
@@ -109,7 +120,7 @@
                                       (format *error-output* "scan-symbols error: ~a~%" e)
                                       '()))))
     (reparse-and-publish server uri text)
-    :null))
+    nil))
 
 (defun handle-did-change (server params)
   (let* ((td (get-field params "textDocument"))
@@ -125,7 +136,7 @@
                                        (format *error-output* "scan error: ~a~%" e)
                                        '())))
       (reparse-and-publish server uri new-text))
-    :null))
+    nil))
 
 (defun handle-did-save (server params)
   (handle-did-change server params))
@@ -135,7 +146,7 @@
   (let* ((td (get-field params "textDocument"))
          (uri (get-field td "uri")))
     (remhash uri *documents*)
-    :null))
+    nil))
 
 (defun handle-completion (server params)
   (declare (ignore server))
@@ -156,15 +167,22 @@
                               '()))))
         (setf items
               (mapcar (lambda (label)
-                        `(("label" . ,label) ("kind" . 14)))   ; 14 = Keyword
+                        (ht "label" label "kind" 14))   ; 14 = Keyword
                       completions))))
-    `(("isIncomplete" . :false)
-      ("items" . ,items))))
+    ;; Omit `isIncomplete` — LSP spec defaults it to false on the client
+    ;; side, and avoiding the field sidesteps yason's NIL/false ambiguity.
+    (ht "items" items)))
 
 ;;; --- entry point -------------------------------------------------------
 
 (defun run-server ()
-  "Start the LSP server on stdio. Blocks until exit."
+  "Start the LSP server on stdio. Blocks on the reading loop until
+   the exit handler calls (uiop:quit 0)."
+  ;; CRITICAL: disable SBCL's interactive debugger. If a handler raises
+  ;; an uncaught condition, the debugger prompt would write to stdout
+  ;; (the LSP transport), corrupting the JSON-RPC stream and causing
+  ;; the lem client to hang waiting for a valid response.
+  #+sbcl (sb-ext:disable-debugger)
   (let ((server (jsonrpc:make-server)))
     (jsonrpc:expose server "initialize"          (lambda (p) (handle-initialize server p)))
     (jsonrpc:expose server "initialized"         (lambda (p) (handle-initialized server p)))
@@ -175,6 +193,7 @@
     (jsonrpc:expose server "textDocument/didSave"  (lambda (p) (handle-did-save server p)))
     (jsonrpc:expose server "textDocument/didClose" (lambda (p) (handle-did-close server p)))
     (jsonrpc:expose server "textDocument/completion" (lambda (p) (handle-completion server p)))
-    (jsonrpc:server-listen server :mode :stdio)
-    ;; server-listen returns; block until exit handler calls (uiop:quit).
-    (loop (sleep 1))))
+    ;; server-listen runs the reading loop in THIS thread (per stdio
+    ;; transport's start-server impl), spawning a separate processing
+    ;; thread. It blocks until stdin EOF; no extra (loop (sleep 1)) needed.
+    (jsonrpc:server-listen server :mode :stdio)))
