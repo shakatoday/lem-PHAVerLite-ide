@@ -41,6 +41,7 @@ qlot exec sbcl --no-userinit --no-sysinit \
   --eval '(ql:quickload :lem-ncurses :silent t)' \
   --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
   --eval '(ql:quickload :phaverlite-mode :silent t)' \
+  --eval '(ql:quickload :phaverlite-mode-lsp :silent t)' \
   --eval "(defparameter cl-user::*phaverlite-ide-banner* \"[phaverlite-ide] sub-project A bootstrap loaded\")" \
   --eval "(lem:add-hook lem:*after-init-hook* (lambda () (lem:message cl-user::*phaverlite-ide-banner*)))" \
   --eval "(sb-ext:save-lisp-and-die \"$CORE\" :toplevel (lambda () (lem:lem) (uiop:quit 0)))"

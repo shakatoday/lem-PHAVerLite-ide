@@ -23,6 +23,7 @@
 ;; bin/phaverlite-ide script does `cd "$REPO"` before exec'ing sbcl.
 (pushnew (truename (uiop:getcwd)) asdf:*central-registry* :test #'equal)
 (ql:quickload :phaverlite-mode :silent t)
+(ql:quickload :phaverlite-mode-lsp :silent t)
 
 ;; Verification banner — appears in *Messages* so we can confirm THIS init.lisp
 ;; ran (vs. some stray ~/.config/lem/init.lisp). Used by bin/verify-isolation.
