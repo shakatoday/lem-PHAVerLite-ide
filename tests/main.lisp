@@ -214,6 +214,19 @@
       (phaverlite-mode/sweep::materialize-template tmpl-path out-path 1.25)
       (ok (string= "pc := 1.25;"
                    (uiop:read-file-string out-path)))))
+  (testing "single-float 1.0 substitutes as '1.0' (no f0 type suffix)"
+    ;; Regression: princ-to-string on a single-float prints '1.0f0' under
+    ;; the SBCL default reader settings used by qlot/lem load chain, which
+    ;; phaverlite's parser rejects with 'syntax error' on the pc := line.
+    ;; materialize-template must use ~F (or otherwise strip the suffix).
+    (let* ((tmpl-path (merge-pathnames "phaverlite-onef.pha"
+                                       (uiop:temporary-directory)))
+           (out-path  (merge-pathnames "phaverlite-onef-out.pha"
+                                       (uiop:temporary-directory))))
+      (with-open-file (s tmpl-path :direction :output :if-exists :supersede)
+        (write-string "pc := __PC__;" s))
+      (phaverlite-mode/sweep::materialize-template tmpl-path out-path 1.0)
+      (ok (string= "pc := 1.0;" (uiop:read-file-string out-path)))))
   (testing "raises when template lacks __PC__"
     (let* ((tmpl-path (merge-pathnames "phaverlite-bad.pha"
                                        (uiop:temporary-directory)))

@@ -78,7 +78,10 @@
     (unless (search "__PC__" source)
       (error "Template ~a has no __PC__ placeholder" template-path))
     (ensure-directories-exist output-path)
-    (let* ((pc-string (princ-to-string pc))
+    ;; ~F prints "1.0", "0.05" etc. — clean decimal form. princ-to-string on a
+    ;; single-float prints "1.0f0" (with the SBCL float-type suffix), which
+    ;; phaverlite's parser rejects with "syntax error" on the pc := line.
+    (let* ((pc-string (format nil "~F" pc))
            (rendered (cl-ppcre-substitute-or-string source "__PC__" pc-string)))
       (with-open-file (s output-path :direction :output :if-exists :supersede)
         (write-string rendered s))
