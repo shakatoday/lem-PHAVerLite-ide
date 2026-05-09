@@ -10,3 +10,5 @@ git async-process https://github.com/lem-project/async-process.git :ref 3ea46fcd
 git lem-extension-manager https://github.com/lem-project/lem-extension-manager.git :ref fac3dd4c65f75d1ec9dbae62bc9945f4c9ba63a3
 git jsonrpc https://github.com/cxxxr/jsonrpc.git :ref 42fa96ec34f6b6be77a6f12f7c4e84f375eff019
 git tree-sitter-cl https://github.com/lem-project/tree-sitter-cl.git :ref 431b572d0e49d64a78320cc5f4b4a90391024ce6
+
+ql rove

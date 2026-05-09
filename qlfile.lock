@@ -34,3 +34,7 @@
  (:class qlot/source/git:source-git
   :initargs (:remote-url "https://github.com/lem-project/tree-sitter-cl.git" :ref "431b572d0e49d64a78320cc5f4b4a90391024ce6")
   :version "git-431b572d0e49d64a78320cc5f4b4a90391024ce6"))
+("rove" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version :latest)
+  :version "ql-2026-01-01"))
