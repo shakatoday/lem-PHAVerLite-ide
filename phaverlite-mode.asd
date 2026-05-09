@@ -11,4 +11,5 @@
                (:file "indent")
                (:file "commands")
                (:file "mode")
-               (:file "sweep")))
+               (:file "sweep")
+               (:file "plot")))
