@@ -69,7 +69,7 @@ Expected: qlot fetches rove and any transitive deps (`fiveam`-free; rove has its
 - [ ] **Step 4: Verify rove loads**
 
 ```bash
-qlot exec sbcl --no-userinit --no-sysinit --noinform \
+qlot exec sbcl --noinform --no-userinit --no-sysinit \
   --eval '(ql:quickload :rove :silent t)' \
   --eval '(format t "rove loaded: ~a~%" (find-package :rove))' \
   --eval '(uiop:quit 0)'
@@ -216,7 +216,7 @@ Insert AFTER it (and BEFORE the banner `defparameter`):
 
 ```bash
 PHAVERLITE_IDE_LIB="$PWD/var/lib" qlot exec sbcl \
-  --no-userinit --no-sysinit --noinform \
+  --noinform --no-userinit --no-sysinit \
   --eval '(ql:quickload :cffi :silent t)' \
   --eval '(let ((d (uiop:getenv "PHAVERLITE_IDE_LIB"))) (when d (pushnew (uiop:ensure-directory-pathname d) cffi:*foreign-library-directories* :test #'\''equal)))' \
   --eval '(pushnew (truename ".") asdf:*central-registry* :test #'\''equal)' \
@@ -334,7 +334,7 @@ cd "$REPO"
 PATH="$REPO/var/test-bin:$PATH" \
 PHAVERLITE_IDE_LIB="$REPO/var/lib" \
 qlot exec sbcl \
-  --no-userinit --no-sysinit --noinform \
+  --noinform --no-userinit --no-sysinit \
   --eval '(ql:quickload :cffi :silent t)' \
   --eval "(let ((d (uiop:getenv \"PHAVERLITE_IDE_LIB\"))) (when d (pushnew (uiop:ensure-directory-pathname d) cffi:*foreign-library-directories* :test #'equal)))" \
   --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
@@ -949,7 +949,7 @@ Expected: all five deftests still PASS. `mode.lisp` adding `define-major-mode` a
 
 If you get `Variable LANGUAGE-MODE not found` or similar, the `:use` of `lem/language-mode` failed — confirm lem's `language-mode` package exists by running:
 ```bash
-qlot exec sbcl --no-userinit --no-sysinit --noinform \
+qlot exec sbcl --noinform --no-userinit --no-sysinit \
   --eval '(ql:quickload :lem :silent t)' \
   --eval '(format t "~a~%" (find-package :lem/language-mode))' \
   --eval '(uiop:quit 0)'
