@@ -561,3 +561,41 @@
         (phaverlite-mode/plot:phaverlite-plot-buffer buf)
         (let ((messages (funcall collect)))
           (ok (some (lambda (m) (search "Sweep in progress" m)) messages)))))))
+
+(deftest sweep-plot-row
+  (testing "after a sweep, p on a row creates plot.png in that pc's dir"
+    (let ((path (make-temp-pha-template "pc := __PC__;")))
+      (with-env-vars
+          (("FAKE_PHAVERLITE_MODE" "sweep")
+           ("FAKE_RESULT" "unreachable")
+           ("FAKE_CPU" "0.10")
+           ("FAKE_TOUCH_REACH_INV" "1"))
+        (let ((phaverlite-mode/sweep::*sweep-driver* :sync))
+          (phaverlite-mode/sweep::run-sweep path 3.0 -1.0 1.0))
+        (ok (wait-for-sweep-completion)))
+      (let* ((basename (pathname-name path))
+             (pc-3-dir (merge-pathnames
+                        (format nil "var/sweep/~a/pc-3.0/" basename)
+                        (uiop:getcwd))))
+        (ok (probe-file (merge-pathnames "out_reach" pc-3-dir)))
+        (ok (probe-file (merge-pathnames "out_inv" pc-3-dir)))
+        (let* ((sweep-buf (lem:get-buffer "*phaverlite-sweep*"))
+               (point (lem:buffer-point sweep-buf)))
+          (lem:move-to-line point 7)         ; first row after header
+          (lem:line-start point)
+          (lem:with-current-buffer sweep-buf
+            (multiple-value-bind (install collect) (stub-message-collector)
+              (funcall install)
+              (unwind-protect
+                   (phaverlite-mode/plot:phaverlite-sweep-plot-row)
+                (funcall collect))))
+          (ok (probe-file (merge-pathnames "plot.png" pc-3-dir)))))))
+  (testing "wrong buffer: message and no-op"
+    (let ((scratch (lem:make-buffer "*scratch-test*" :temporary t)))
+      (lem:with-current-buffer scratch
+        (multiple-value-bind (install collect) (stub-message-collector)
+          (funcall install)
+          (phaverlite-mode/plot:phaverlite-sweep-plot-row)
+          (let ((messages (funcall collect)))
+            (ok (some (lambda (m) (search "Not in a *phaverlite-sweep*" m))
+                      messages))))))))

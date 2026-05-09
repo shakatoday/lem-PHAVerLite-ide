@@ -112,11 +112,16 @@
    blank for visual separation, line 5 is the column header).")
 
 (defun ensure-sweep-buffer ()
-  "Get-or-create the *phaverlite-sweep* buffer; clear it; return it."
+  "Get-or-create the *phaverlite-sweep* buffer; clear it; activate
+   phaverlite-sweep-results-mode (so `p` reaches plot-row); return it."
   (let ((buf (or (lem:get-buffer *output-buffer-name*)
                  (lem:make-buffer *output-buffer-name*))))
     (setf (lem:buffer-read-only-p buf) nil)
     (lem:erase-buffer buf)
+    ;; Activate the results mode so the buffer-local p keybind takes
+    ;; effect. The mode command sets buffer-major-mode internally.
+    (lem:with-current-buffer buf
+      (phaverlite-sweep-results-mode))
     buf))
 
 (defun write-header (buf template-path start step stop count)
@@ -462,3 +467,13 @@
             "C-c C-n" 'phaverlite-sweep-skip)
 (define-key phaverlite-mode/commands:*phaverlite-mode-keymap*
             "C-c C-k" 'phaverlite-sweep-cancel)
+
+;;; --- *phaverlite-sweep* buffer mode + keymap ----------------------------
+
+(defparameter *phaverlite-sweep-results-mode-keymap*
+  (lem:make-keymap :description '*phaverlite-sweep-results-mode-keymap*))
+
+(lem:define-major-mode phaverlite-sweep-results-mode nil
+    (:name "PHAVer-sweep"
+     :keymap *phaverlite-sweep-results-mode-keymap*)
+  (setf (lem:variable-value 'lem:enable-syntax-highlight) nil))

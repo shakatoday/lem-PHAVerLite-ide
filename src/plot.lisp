@@ -112,3 +112,66 @@
 
 (define-key phaverlite-mode/commands:*phaverlite-mode-keymap*
             "C-c C-p" 'phaverlite-plot-buffer)
+
+;;; --- p on a sweep row (per-pc plot command) -----------------------------
+
+(defun parse-sweep-row-pc (line-text)
+  "Return the first whitespace-separated token of LINE-TEXT as a string,
+   or NIL if the line doesn't look like a sweep result row."
+  (let* ((trimmed (string-trim '(#\space #\tab) line-text))
+         (sp (or (position-if (lambda (c) (member c '(#\space #\tab)))
+                              trimmed)
+                 (length trimmed)))
+         (token (subseq trimmed 0 sp)))
+    (when (and (plusp (length token))
+               ;; Must start with a digit or sign — filters out header,
+               ;; status, and separator lines.
+               (or (digit-char-p (char token 0))
+                   (and (member (char token 0) '(#\- #\+))
+                        (> (length token) 1)
+                        (digit-char-p (char token 1)))))
+      token)))
+
+(defun current-line-text (buffer)
+  "Return the text of the line containing BUFFER's point."
+  (let ((start (lem:copy-point (lem:buffer-point buffer) :temporary))
+        (end (lem:copy-point (lem:buffer-point buffer) :temporary)))
+    (lem:line-start start)
+    (lem:line-end end)
+    (lem:points-to-string start end)))
+
+(define-command phaverlite-sweep-plot-row () ()
+  "Plot the reach-set for the sweep row at point. Operates on the
+   *phaverlite-sweep* buffer; reads the pc value from the current line's
+   first token."
+  (let ((buf (lem:current-buffer)))
+    (cond
+      ((not (string= (lem:buffer-name buf) "*phaverlite-sweep*"))
+       (lem:message "Not in a *phaverlite-sweep* buffer"))
+      (t
+       (let* ((line (current-line-text buf))
+              (pc-token (parse-sweep-row-pc line))
+              (basename (lem:buffer-value
+                         buf 'phaverlite-mode/sweep::phaverlite-sweep-template-basename)))
+         (cond
+           ((null pc-token)
+            (lem:message "No sweep row at point"))
+           ((null basename)
+            (lem:message "No template basename on sweep buffer (run a sweep first)"))
+           (t
+            (let ((pc-dir (merge-pathnames
+                           (format nil "var/sweep/~a/pc-~a/"
+                                   basename pc-token)
+                           (uiop:getcwd))))
+              (cond
+                ((not (uiop:directory-exists-p pc-dir))
+                 (lem:message
+                  "No plot data for pc=~a (was it cancelled?)" pc-token))
+                (t
+                 (render-plot-dir pc-dir)))))))))))
+
+;; The phaverlite-sweep-results-mode keymap is defined in src/sweep.lisp
+;; and exists by the time plot.lisp loads (asd serial order). Bind p
+;; here, after phaverlite-sweep-plot-row exists.
+(define-key phaverlite-mode/sweep::*phaverlite-sweep-results-mode-keymap*
+            "p" 'phaverlite-sweep-plot-row)
