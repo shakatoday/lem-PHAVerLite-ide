@@ -13,7 +13,10 @@ ps3/
 
 # Developer-local clone of lem source (optional, for browsing/patching).
 # qlot manages the canonical copy under .qlot/; this is just scratch.
-/lem/
+# Dotted name keeps qlot's project-root scan from picking up its asd files
+# and conflicting with the qlot-pinned lem (manifests as "FUNDAMENTAL-MODE
+# already defined" debugger drop on bin/test-mode).
+/.lem-ref/
 
 # Compiled Lisp artifacts.
 *.fasl

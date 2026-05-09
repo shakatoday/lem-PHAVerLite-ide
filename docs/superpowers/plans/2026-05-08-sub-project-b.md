@@ -4,13 +4,13 @@
 
 **Goal:** Land a `.pha` major mode in lem with PHAVer-aware syntax highlighting, block-aware indentation, comment toggling, and an `M-x phaverlite-run-buffer` command (also bound to `C-c C-c`) that runs `phaverlite` on the current file and shows its output in a horizontal split below.
 
-**Architecture:** One ASDF system (`phaverlite-mode`) with the asd at repo root (`:pathname "src"`) and four source files directly under `src/`, each in its own package using lem's `/` sub-module convention. A separate test system (`phaverlite-mode-tests`) at repo root runs against the rove framework via `(asdf:test-system :phaverlite-mode-tests)`. Source layout follows lem's own convention (see `lem/lem.asd`, `lem/extensions/dot-mode/dot-mode.lisp`, `lem/extensions/c-mode/c-mode.lisp` for reference patterns).
+**Architecture:** One ASDF system (`phaverlite-mode`) with the asd at repo root (`:pathname "src"`) and four source files directly under `src/`, each in its own package using lem's `/` sub-module convention. A separate test system (`phaverlite-mode-tests`) at repo root runs against the rove framework via `(asdf:test-system :phaverlite-mode-tests)`. Source layout follows lem's own convention (see `.lem-ref/lem.asd`, `.lem-ref/extensions/dot-mode/dot-mode.lisp`, `.lem-ref/extensions/c-mode/c-mode.lisp` for reference patterns).
 
 **Tech Stack:** SBCL + lem (pinned in `qlfile`) + qlot for deps + rove for tests + uiop for process spawn + zsh launcher.
 
 **Spec:** `docs/superpowers/specs/2026-05-08-sub-project-b-design.md` — read it first.
 
-**Spec deviation:** Spec mentions `lem:*auto-mode-alist*`. Lem's actual public API is `lem:define-file-type` (see `lem/extensions/dot-mode/dot-mode.lisp:56` and `lem/extensions/c-mode/c-mode.lisp:269`). The plan uses `define-file-type`. Functionally equivalent to what the spec describes.
+**Spec deviation:** Spec mentions `lem:*auto-mode-alist*`. Lem's actual public API is `lem:define-file-type` (see `.lem-ref/extensions/dot-mode/dot-mode.lisp:56` and `.lem-ref/extensions/c-mode/c-mode.lisp:269`). The plan uses `define-file-type`. Functionally equivalent to what the spec describes.
 
 ---
 
@@ -394,7 +394,7 @@ EOF
 
 ## Task 4: syntax.lisp — TDD for keyword faces and comments
 
-**Reference pattern:** `lem/extensions/dot-mode/dot-mode.lisp` shows the full pattern: define a custom attribute, build a tm-language with `make-tm-patterns` + `make-tm-line-comment-region` + `make-tm-block-comment-region` + `make-tm-match :name 'attr`, then build a syntax-table with `make-syntax-table` and `set-syntax-parser`. Also useful: `lem/extensions/c-mode/grammar.lisp`.
+**Reference pattern:** `.lem-ref/extensions/dot-mode/dot-mode.lisp` shows the full pattern: define a custom attribute, build a tm-language with `make-tm-patterns` + `make-tm-line-comment-region` + `make-tm-block-comment-region` + `make-tm-match :name 'attr`, then build a syntax-table with `make-syntax-table` and `set-syntax-parser`. Also useful: `.lem-ref/extensions/c-mode/grammar.lisp`.
 
 **Files:**
 - Modify: `src/syntax.lisp`
@@ -900,7 +900,7 @@ EOF
 
 ## Task 7: mode.lisp — define-major-mode and define-file-type
 
-**Reference pattern:** `lem/extensions/dot-mode/dot-mode.lisp` (especially lines 48–56) shows the exact `define-major-mode … language-mode` + `define-file-type` pattern.
+**Reference pattern:** `.lem-ref/extensions/dot-mode/dot-mode.lisp` (especially lines 48–56) shows the exact `define-major-mode … language-mode` + `define-file-type` pattern.
 
 **Files:**
 - Modify: `src/mode.lisp`
