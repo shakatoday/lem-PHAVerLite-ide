@@ -412,6 +412,7 @@ Append to `tests/main.lisp`:
          (point (lem:buffer-point buf)))
     (setf (lem:buffer-syntax-table buf)
           phaverlite-mode/syntax:*phaverlite-syntax-table*)
+    (setf (lem:variable-value 'lem:enable-syntax-highlight :buffer buf) t)
     (lem:erase-buffer buf)
     (lem:insert-string point text)
     ;; Force a full syntax scan over the buffer.
@@ -454,7 +455,7 @@ Replace the package shell with:
 ;;;; Pattern reference: lem/extensions/dot-mode/dot-mode.lisp.
 
 (defpackage #:phaverlite-mode/syntax
-  (:use #:cl #:lem)
+  (:use #:cl #:lem #:lem/language-mode-tools)
   (:export #:*phaverlite-syntax-table*
            #:syntax-keyword-block-attribute))
 (in-package #:phaverlite-mode/syntax)
