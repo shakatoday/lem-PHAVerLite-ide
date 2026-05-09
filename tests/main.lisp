@@ -148,3 +148,32 @@
              (resolved-path (namestring (lem:buffer-filename buf))))
         (ok (search (format nil "FAKE OUTPUT ~a" resolved-path) text))
         (ok (search "---- exit: 0" text))))))
+
+(deftest sweep-parse
+  (testing "'bad is reachable' → :reachable"
+    (ok (eq :reachable
+            (phaverlite-mode/sweep::parse-result "bad is reachable"))))
+  (testing "'bad not reachable' → :unreachable"
+    (ok (eq :unreachable
+            (phaverlite-mode/sweep::parse-result "bad not reachable"))))
+  (testing "different region name 'target is reachable' → :reachable"
+    (ok (eq :reachable
+            (phaverlite-mode/sweep::parse-result "target is reachable"))))
+  (testing "different region name 'unsafe not reachable' → :unreachable"
+    (ok (eq :unreachable
+            (phaverlite-mode/sweep::parse-result "unsafe not reachable"))))
+  (testing "neither phrase → :unknown"
+    (ok (eq :unknown
+            (phaverlite-mode/sweep::parse-result "garbage output"))))
+  (testing "both phrases — 'not reachable' wins (sweep_pc.sh precedence)"
+    (ok (eq :unreachable
+            (phaverlite-mode/sweep::parse-result
+             (format nil "bad is reachable~%bad not reachable")))))
+  (testing "parse-cpu-time picks penultimate field of LAST 'Time in get_reach_set' line"
+    (let ((output (format nil
+                          "Time in get_reach_set : 0.10 s~%~
+                           Time in get_reach_set : 0.42 s")))
+      (ok (string= "0.42"
+                   (phaverlite-mode/sweep::parse-cpu-time output)))))
+  (testing "parse-cpu-time → NIL when no such line"
+    (ok (null (phaverlite-mode/sweep::parse-cpu-time "no timing here")))))
