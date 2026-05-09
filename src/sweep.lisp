@@ -186,7 +186,8 @@
 
 (defstruct sweep-state
   template-path
-  output-path                       ; var/sweep/<basename>.pha (overwritten)
+  template-basename                 ; string; used by phaverlite-sweep-plot-row (sub-project D)
+  output-path                       ; legacy slot — current per-pc path comes from sweep-output-path
   values                            ; remaining pc values
   total                             ; original count
   done                              ; count of completed values
@@ -206,12 +207,17 @@
    sweep deterministically without depending on lem's timer-thread
    firing in a headless image.")
 
-(defun sweep-output-path (template-path)
-  "Where the materialized .pha goes — var/sweep/<basename>.pha, overwritten
-   per iteration."
+(defun sweep-output-path (template-path pc)
+  "Where the materialized .pha goes for this pc value:
+   var/sweep/<basename>/pc-<formatted-pc>/<basename>.<ext>.
+   Each pc gets its own directory so phaverlite's side-effect output
+   files (out_reach, out_inv) survive across iterations and can be
+   plotted later via phaverlite-sweep-plot-row (sub-project D)."
   (let* ((basename (pathname-name template-path))
          (ext (pathname-type template-path))
-         (rel (format nil "var/sweep/~a.~a" basename (or ext "pha"))))
+         (pc-string (format nil "~F" pc))
+         (rel (format nil "var/sweep/~a/pc-~a/~a.~a"
+                      basename pc-string basename (or ext "pha"))))
     (merge-pathnames rel (uiop:getcwd))))
 
 (defun start-next-iteration (state)
@@ -298,12 +304,16 @@
                             (sweep-state-total state)
                             (format nil "pc=~a" pc))
          (handler-case
-             (let ((out-path (sweep-state-output-path state)))
+             (let* ((out-path (sweep-output-path
+                               (sweep-state-template-path state) pc))
+                    (pc-dir (uiop:pathname-directory-pathname out-path)))
+               (ensure-directories-exist out-path)
                (materialize-template (sweep-state-template-path state)
                                      out-path pc)
                (let ((proc (uiop:launch-program
                             (list "phaverlite" (namestring out-path))
-                            :output :stream :error-output :output)))
+                            :output :stream :error-output :output
+                            :directory pc-dir)))
                  (setf (sweep-state-current-process state) proc)
                  (start-next-iteration state)))
            (error (e)
@@ -331,11 +341,12 @@
    first iteration tick. Returns the sweep-state."
   (let* ((values (generate-range start step stop))
          (total (length values))
-         (out-path (sweep-output-path template-path))
+         (basename (pathname-name template-path))
          (buf (ensure-sweep-buffer))
          (state (make-sweep-state
                  :template-path template-path
-                 :output-path out-path
+                 :template-basename basename
+                 :output-path nil
                  :values values
                  :total total
                  :done 0
@@ -346,6 +357,10 @@
                  :timer nil)))
     (write-header buf template-path start step stop total)
     (write-status-line buf 0 total "starting…")
+    ;; Stash the basename on a buffer-local var so phaverlite-sweep-plot-row
+    ;; (sub-project D) can find the per-pc dirs after *active-sweep* is
+    ;; cleared on finalize.
+    (setf (lem:buffer-value buf 'phaverlite-sweep-template-basename) basename)
     ;; pop-to-buffer requires a live frontend; tolerate failure in headless
     ;; rove env (same hack as phaverlite-run-buffer in src/commands.lisp).
     (ignore-errors (lem:pop-to-buffer buf))

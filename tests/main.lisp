@@ -353,7 +353,17 @@
                                           while j
                                           do (terpri s)
                                              (setf i (1+ j)))))))
-        (ok (search "0.42" text)))))
+        (ok (search "0.42" text)))
+      ;; Per-pc dirs were created with the materialized .pha inside, AND
+      ;; phaverlite ran with cwd set there (out_reach/out_inv would land
+      ;; there too if the fake binary touched them — sub-project D Task 4).
+      (let* ((basename (pathname-name path))
+             (pc-3-dir (merge-pathnames
+                        (format nil "var/sweep/~a/pc-3.0/" basename)
+                        (uiop:getcwd))))
+        (ok (probe-file (merge-pathnames
+                         (format nil "~a.pha" basename) pc-3-dir))
+            "per-pc dir contains the materialized .pha"))))
   (testing "*active-sweep* is NIL after completion"
     (ok (null phaverlite-mode/sweep::*active-sweep*)))
   (testing "skip case: cancel-flag :skip marks one row (cancelled), continues"
