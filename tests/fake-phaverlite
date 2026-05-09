@@ -1,0 +1,6 @@
+#!/bin/sh
+# tests/fake-phaverlite — test fixture that stands in for the real phaverlite.
+# Echoes a deterministic line containing the path it was called with, then
+# exits with $FAKE_EXIT (default 0). Used by tests/main.lisp run-command tests.
+echo "FAKE OUTPUT $1"
+exit ${FAKE_EXIT:-0}

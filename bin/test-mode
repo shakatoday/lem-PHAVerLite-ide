@@ -1,0 +1,40 @@
+#!/usr/bin/env zsh
+# bin/test-mode — run the rove suite for phaverlite-mode.
+#
+# Prepends tests/ to PATH so that `phaverlite-run-buffer` calls into our
+# fake binary rather than a real `phaverlite`. The fake echoes a known
+# string and obeys $FAKE_EXIT — tests assert against both.
+#
+# Exits with rove's exit code: 0 on all-pass, non-zero on any fail.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [[ ! -d "$REPO/.qlot" ]]; then
+  print -u2 "test-mode: $REPO/.qlot/ missing. Run 'qlot install' first."
+  exit 1
+fi
+if [[ ! -f "$REPO/var/lib/libasyncprocess.dylib" ]]; then
+  print -u2 "test-mode: $REPO/var/lib/libasyncprocess.dylib missing."
+  print -u2 "           Run 'bin/build-deps' first."
+  exit 1
+fi
+
+# Symlink fake-phaverlite as `phaverlite` in a private dir we put first on PATH.
+# Keep the symlink under var/ (gitignored) so we don't pollute tests/.
+mkdir -p "$REPO/var/test-bin"
+ln -sf "$REPO/tests/fake-phaverlite" "$REPO/var/test-bin/phaverlite"
+
+cd "$REPO"
+
+PATH="$REPO/var/test-bin:$PATH" \
+PHAVERLITE_IDE_LIB="$REPO/var/lib" \
+qlot exec sbcl \
+  --noinform --no-userinit --no-sysinit \
+  --eval '(ql:quickload :cffi :silent t)' \
+  --eval "(let ((d (uiop:getenv \"PHAVERLITE_IDE_LIB\"))) (when d (pushnew (uiop:ensure-directory-pathname d) cffi:*foreign-library-directories* :test #'equal)))" \
+  --eval "(pushnew (truename \".\") asdf:*central-registry* :test #'equal)" \
+  --eval '(ql:quickload :phaverlite-mode-tests :silent t)' \
+  --eval '(uiop:quit (if (rove:run :phaverlite-mode-tests) 0 1))'
