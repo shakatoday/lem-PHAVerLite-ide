@@ -114,7 +114,7 @@ This task wires the system so `(ql:quickload :phaverlite-mode)` succeeds. No fun
 
 (defsystem "phaverlite-mode"
   :description "PHAVer (.pha) major mode for lem."
-  :depends-on ("lem")
+  :depends-on ("lem/core")
   :pathname "src"
   :serial t
   :components ((:file "syntax")
