@@ -26,6 +26,7 @@ fi
 # Keep the symlink under var/ (gitignored) so we don't pollute tests/.
 mkdir -p "$REPO/var/test-bin"
 ln -sf "$REPO/tests/fake-phaverlite" "$REPO/var/test-bin/phaverlite"
+ln -sf "$REPO/tests/fake-graph" "$REPO/var/test-bin/graph"
 
 cd "$REPO"
 

@@ -1,0 +1,7 @@
+#!/bin/sh
+# tests/fake-graph — stand-in for GNU plotutils `graph(1)`. Echoes a
+# marker so plot-render tests can verify graph was invoked. The output
+# redirection (graph ... > plot.png) is handled in lisp via uiop's
+# :output kwarg, so the marker lands in the PNG file path.
+echo "FAKE GRAPH OUTPUT"
+exit "${FAKE_EXIT:-0}"
