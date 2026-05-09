@@ -18,6 +18,12 @@
 
 (ql:quickload :lem-ncurses :silent t)
 
+;; Register the repo root as an ASDF source so (ql:quickload :phaverlite-mode)
+;; finds phaverlite-mode.asd. uiop:getcwd is the launcher's cd target — the
+;; bin/phaverlite-ide script does `cd "$REPO"` before exec'ing sbcl.
+(pushnew (truename (uiop:getcwd)) asdf:*central-registry* :test #'equal)
+(ql:quickload :phaverlite-mode :silent t)
+
 ;; Verification banner — appears in *Messages* so we can confirm THIS init.lisp
 ;; ran (vs. some stray ~/.config/lem/init.lisp). Used by bin/verify-isolation.
 (defparameter *phaverlite-ide-banner*
