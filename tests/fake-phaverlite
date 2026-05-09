@@ -1,6 +1,37 @@
 #!/bin/sh
-# tests/fake-phaverlite — test fixture that stands in for the real phaverlite.
-# Echoes a deterministic line containing the path it was called with, then
-# exits with $FAKE_EXIT (default 0). Used by tests/main.lisp run-command tests.
-echo "FAKE OUTPUT $1"
-exit ${FAKE_EXIT:-0}
+# tests/fake-phaverlite — test fixture for phaverlite invocations.
+#
+# Two modes:
+#
+#   1. Default (no FAKE_PHAVERLITE_MODE): echoes "FAKE OUTPUT $1" and
+#      exits $FAKE_EXIT (default 0). Used by sub-project B's
+#      phaverlite-run-buffer tests.
+#
+#   2. FAKE_PHAVERLITE_MODE=sweep: emits phaverlite-shaped output the
+#      pc-sweep parser recognizes. Driven by env vars:
+#         FAKE_RESULT  reachable | unreachable | unknown   (default unreachable)
+#         FAKE_CPU     <seconds>                            (default 0.42)
+#         FAKE_SLEEP   <seconds>                            (default 0)
+#         FAKE_EXIT    <code>                               (default 0)
+#
+# Usage in tests: bin/test-mode symlinks this as `phaverlite` on PATH;
+# deftests `let`-bind env vars per call.
+
+case "${FAKE_PHAVERLITE_MODE:-}" in
+  sweep)
+    case "${FAKE_RESULT:-unreachable}" in
+      reachable)   echo "bad is reachable" ;;
+      unreachable) echo "bad not reachable" ;;
+      *)           echo "(no result)" ;;
+    esac
+    echo "Time in get_reach_set : ${FAKE_CPU:-0.42} s"
+    if [ -n "${FAKE_SLEEP:-}" ] && [ "${FAKE_SLEEP}" -gt 0 ] 2>/dev/null; then
+      sleep "$FAKE_SLEEP"
+    fi
+    exit "${FAKE_EXIT:-0}"
+    ;;
+  *)
+    echo "FAKE OUTPUT $1"
+    exit "${FAKE_EXIT:-0}"
+    ;;
+esac
