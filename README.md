@@ -40,9 +40,10 @@ into a live results table (`pc | result | cpu(s)`). Skip a slow row
 or cancel the whole sweep without leaving the editor.
 
 #### Insert the placeholder:
-You need to insert `__PC__` placeholder to use sweep. keybinding: `C-c C-d`
+You need to insert `__PC__` placeholder to use sweep. 
+- keybinding `C-c C-d` or command `phaverlite-insert-pc-template`. 
 
-<img src="docs/media/feature_insert_pc_placeholder.gif" alt="Insert pc template" height="600">
+<img src="docs/media/feature_insert_pc_placeholder.gif" alt="Insert pc template" height="300">
 
 ---
 #### Run a sweep:
