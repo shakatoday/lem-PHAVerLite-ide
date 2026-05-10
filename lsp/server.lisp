@@ -114,17 +114,46 @@
                          :symbols (safe-scan-symbols text))))
   nil)
 
+(defun apply-incremental-change (text change)
+  "Apply one LSP incremental contentChange (a hash-table with `range`
+   and `text`) to TEXT. `range` has `start` and `end` (each line/character)."
+  (let* ((range (get-field change "range"))
+         (new-text (get-field change "text"))
+         (start (get-field range "start"))
+         (end (get-field range "end"))
+         (start-offset (line-character-to-offset
+                        text (get-field start "line") (get-field start "character")))
+         (end-offset (line-character-to-offset
+                      text (get-field end "line") (get-field end "character"))))
+    (concatenate 'string
+                 (subseq text 0 start-offset)
+                 (or new-text "")
+                 (subseq text end-offset))))
+
 (defun handle-did-change (server params)
   (declare (ignore server))
+  ;; Lem's lsp-mode hard-codes incremental contentChange events regardless
+  ;; of the sync mode we advertise — every keystroke arrives as one event
+  ;; with `range` + small `text`. We must apply each event to the stored
+  ;; document text, not replace the whole document with the event payload.
   (let* ((td (get-field params "textDocument"))
          (uri (get-field td "uri"))
          (changes (get-field params "contentChanges"))
-         ;; Full sync — last change is the new full text.
-         (new-text (get-field (car (last changes)) "text"))
          (doc (gethash uri *documents*)))
     (when doc
-      (setf (document-text doc) new-text
-            (document-symbols doc) (safe-scan-symbols new-text))))
+      (let ((text (document-text doc)))
+        (when (typep changes 'sequence)
+          (map nil (lambda (change)
+                     (cond
+                       ((and (hash-table-p change)
+                             (gethash "range" change))
+                        (setf text (apply-incremental-change text change)))
+                       ;; Fallback: full-sync event has no range, just text.
+                       ((hash-table-p change)
+                        (setf text (or (gethash "text" change) "")))))
+                changes))
+        (setf (document-text doc) text
+              (document-symbols doc) (safe-scan-symbols text)))))
   nil)
 
 (defun handle-did-save (server params)
@@ -172,8 +201,12 @@
                          (ht "label" label "kind" 14))   ; 14 = Keyword
                        completions)
                'vector))))
+    ;; Send the full LSP CompletionList shape: isIncomplete is REQUIRED per
+    ;; the protocol; if we omit it, lem's typed parser leaves the slot
+    ;; unbound and downstream code that reads it without unbound-slot
+    ;; handling crashes (manifests as "<HASH-TABLE> is not a NIL").
     ;; Use vector for items so yason emits `[]` even when empty.
-    (ht "items" items)))
+    (ht "isIncomplete" 'yason:false "items" items)))
 
 ;;; --- entry point -------------------------------------------------------
 
