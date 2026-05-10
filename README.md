@@ -31,6 +31,7 @@ goto …;`, top-level `pc := …`, region builders). Newlines auto-indent.
 
 <img src="docs/media/feature_indentation.gif" alt="Indent on Return" height="600">
 
+
 ### PC sweep, in-buffer
 
 Drop the `__PC__` placeholder where the sweep should substitute, pick
@@ -39,19 +40,21 @@ into a live results table (`pc | result | cpu(s)`). Skip a slow row
 or cancel the whole sweep without leaving the editor.
 
 #### Insert the placeholder:
-You need to insert `__PC__` placeholder to use sweep.
-- keybinding: `C-c C-d`
+You need to insert `__PC__` placeholder to use sweep. keybinding: `C-c C-d`
 
 <img src="docs/media/feature_insert_pc_placeholder.gif" alt="Insert pc template" height="600">
 
+---
 #### Run a sweep:
 
 <img src="docs/media/feature_sweep_pc.gif" alt="PC sweep" height="600">
 
+---
 #### Interrupt and cancel a sweep:
 
 <img src="docs/media/feature_cancel_sweep.gif" alt="Cancel sweep" height="600">
 
+---
 ### Reachable-set plots
 
 Invoke `plotutils` (`graph -T X`) on a `.pha`'s output and view the
@@ -70,9 +73,11 @@ from the open buffer, with dot-completion for `automaton.method` and
 #### Kind-aware completion
 <img src="docs/media/feature_completion.gif" alt="LSP completion" height="600">
 
+
 #### Structural diagnostics
 
 <img src="docs/media/feature_diagnosis.gif" alt="LSP diagnostics" height="600">
+
 
 ## Requirements
 
