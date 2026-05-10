@@ -60,7 +60,7 @@ individual sweep row.
 
 <img src="docs/media/feature_plot.gif" alt="Plot reachable set" height="600">
 
-### LSP — completion + diagnostics
+### Language Server Protocol (LSP) — completion + diagnostics
 
 A project-local language server, no external LSP framework.
 Kind-aware completion offers PHAVer keywords plus symbols scanned
