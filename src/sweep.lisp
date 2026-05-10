@@ -128,7 +128,11 @@
   "Write the immutable two-line header + initial status line. Subsequent
    write-status-line calls rewrite line 3."
   (let ((p (lem:buffer-end-point buf)))
-    (lem:insert-string p (format nil "$ phaverlite-sweep ~a~%" template-path))
+    ;; Show basename only, not full path — full paths in screenshots leak
+    ;; user/project info and clutter the header. The buffer is named after
+    ;; the file already; the directory is implicit from the user's context.
+    (lem:insert-string p (format nil "$ phaverlite-sweep ~a~%"
+                                 (file-namestring template-path)))
     (lem:insert-string p (format nil "Sweep PC: start=~a  step=~a  stop=~a  (~a values)~%"
                                 start step stop count))
     ;; Placeholder status line so write-status-line has a line to overwrite.

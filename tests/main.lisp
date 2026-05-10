@@ -291,7 +291,10 @@ pc := __PC__;" s))
        buf "Lab3/heater_template.pha" 3.0 -0.05 1.0 41)
       (let ((text (lem:points-to-string (lem:buffer-start-point buf)
                                          (lem:buffer-end-point buf))))
-        (ok (search "phaverlite-sweep Lab3/heater_template.pha" text))
+        ;; Header shows basename only (no path), so screenshots don't leak
+        ;; user/project info. See src/sweep.lisp write-header.
+        (ok (search "phaverlite-sweep heater_template.pha" text))
+        (ok (not (search "Lab3/" text)))
         (ok (search "start=3.0" text))
         (ok (search "step=-0.05" text))
         (ok (search "stop=1.0" text))

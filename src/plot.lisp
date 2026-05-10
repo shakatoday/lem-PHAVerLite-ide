@@ -33,11 +33,11 @@
     (cond
       ((not (probe-file reach))
        (lem:message "Plot: no ~a in ~a (did your .pha use .print?)"
-                    +reach-filename+ dir)
+                    +reach-filename+ (uiop:enough-pathname dir (uiop:getcwd)))
        nil)
       ((not (probe-file inv))
        (lem:message "Plot: no ~a in ~a (did your .pha use .print?)"
-                    +inv-filename+ dir)
+                    +inv-filename+ (uiop:enough-pathname dir (uiop:getcwd)))
        nil)
       (t
        (handler-case
@@ -56,8 +56,11 @@
              (handler-case
                  (uiop:launch-program (list "open" (namestring plot)))
                (error (e)
-                 (lem:message "open failed: ~a; plot at ~a" e plot)))
-             (lem:message "Plot: ~a" plot)
+                 ;; Show plot location relative to project root — full
+                 ;; absolute paths leak user/project info in screenshots.
+                 (lem:message "open failed: ~a; plot at ~a"
+                              e (uiop:enough-pathname plot (uiop:getcwd)))))
+             (lem:message "Plot: ~a" (uiop:enough-pathname plot (uiop:getcwd)))
              plot)
          (error (e)
            (lem:message "graph failed: ~a" e)

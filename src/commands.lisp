@@ -44,7 +44,9 @@
   "Spawn `phaverlite PATH` and stream its merged stdout+stderr into
    OUTPUT-BUF. Append an exit-code footer when it terminates. Returns
    the process object."
-  (write-output-line output-buf (format nil "$ phaverlite ~a" path))
+  ;; Show basename only — full path leaks user/project info in screenshots
+  ;; and adds no info the buffer name doesn't already convey.
+  (write-output-line output-buf (format nil "$ phaverlite ~a" (file-namestring path)))
   (write-output-line output-buf "----")
   (handler-case
       (let ((proc (uiop:launch-program (list "phaverlite" (namestring path))
