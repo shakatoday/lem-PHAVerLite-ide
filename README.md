@@ -16,28 +16,57 @@ hybrid-automaton models (`.pha` files), built on the
 
 ## Features
 
-- **`.pha` major mode** — syntax-aware editing for the PHAVer modeling
-  language (`automaton … end`, `loc l: while … wait { … } when … sync …
-  do { … } goto …;`, top-level `pc := …`, region builders, etc.).
-- **PC sweep, in-buffer** — pick a `__PC__` template, choose a
-  `start step end` triple, run `phaverlite` for each value, get a live
-  results table with `pc | result | cpu(s)` rows. Skip a slow row
-  (`C-c C-n`) or cancel the whole sweep (`C-c C-k`) without leaving
-  the editor.
-- **Reachable-set plots** — invoke `plotutils` (`graph -T X`) on a
-  `.pha`'s output, view the rendered plot in a side window or open
-  it in `Preview.app`. Works on the current buffer (`C-c C-p`) or on
-  any individual sweep row (`p`).
-- **Tiny LSP server** — project-local language server, no external LSP
-  framework. Provides:
-  - Structural diagnostics (squiggles for unmatched braces, missing
-    `end`, orphan `end`).
-  - Kind-aware completion (PHAVer keywords + symbols scanned from the
-    open buffer; dot-completion for `automaton.method` and
-    `region.print`).
-
 Everything runs from one `bin/phaverlite-ide` launcher and stays
 inside this repo — uninstall is `rm -rf` the directory.
+
+### `.pha` editing
+
+Syntax-aware editing for the PHAVer modeling language
+(`automaton … end`, `loc l: while … wait { … } when … sync … do { … }
+goto …;`, top-level `pc := …`, region builders). Newlines auto-indent.
+
+<img src="docs/media/feature_indentation.gif" alt="Indent on Return" height="600">
+
+### PC sweep, in-buffer
+
+Drop the `__PC__` placeholder where the sweep should substitute, pick
+a `start step end` triple, and watch `phaverlite` run for each value
+into a live results table (`pc | result | cpu(s)`). Skip a slow row
+or cancel the whole sweep without leaving the editor.
+
+#### Insert the placeholder:
+
+<img src="docs/media/feature_insert_pc_placeholder.gif" alt="Insert pc template" height="600">
+
+#### Run a sweep:
+
+<img src="docs/media/feature_sweep_pc.gif" alt="PC sweep" height="600">
+
+#### Interrupt and cancel a sweep:
+
+<img src="docs/media/feature_cancel_sweep.gif" alt="Cancel sweep" height="600">
+
+### Reachable-set plots
+
+Invoke `plotutils` (`graph -T X`) on a `.pha`'s output and view the
+rendered plot in `Preview.app`. Works on the current buffer or on any
+individual sweep row.
+
+<img src="docs/media/feature_plot.gif" alt="Plot reachable set" height="600">
+
+### LSP — completion + diagnostics
+
+A project-local language server, no external LSP framework.
+Kind-aware completion offers PHAVer keywords plus symbols scanned
+from the open buffer, with dot-completion for `automaton.method` and
+`region.print`.
+
+#### Kind-aware completion
+<img src="docs/media/feature_completion.gif" alt="LSP completion" height="600">
+
+#### Structural diagnostics
+
+<img src="docs/media/feature_diagnosis.gif" alt="LSP diagnostics" height="600">
 
 ## Requirements
 
@@ -120,9 +149,6 @@ In the `*phaverlite-sweep*` results buffer:
 | Key     | Command                | What it does                                                                  |
 |---------|------------------------|-------------------------------------------------------------------------------|
 | `Tab`   | `complete-symbol`      | trigger completion at point                                                   |
-
-Diagnostics render automatically — squiggles appear under offending
-ranges; move point onto the squiggle to see the message.
 
 ## Testing
 
