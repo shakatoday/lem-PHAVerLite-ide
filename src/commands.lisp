@@ -10,6 +10,7 @@
 (defpackage #:phaverlite-mode/commands
   (:use #:cl #:lem)
   (:export #:phaverlite-run-buffer
+           #:phaverlite-insert-pc-template
            #:*phaverlite-mode-keymap*))
 (in-package #:phaverlite-mode/commands)
 
@@ -89,3 +90,19 @@
 ;; Lem's stock binding (in *global-keymap*) is plain `newline`; we shadow it
 ;; in our mode so .pha editing feels like every other modern editor.
 (define-key *phaverlite-mode-keymap* "Return" 'lem/language-mode:newline-and-indent)
+
+;;; --- pc-sweep template insert ------------------------------------------
+
+(define-command phaverlite-insert-pc-template () ()
+  "Insert `pc := __PC__;` at point — the declaration the pc-sweep
+   feature looks for to materialize each pc value. If the current line
+   is non-empty, start a new line first so the declaration always lands
+   on its own line. Point ends up after the inserted line so the user
+   can immediately add the matching `set_partition_constraints` call."
+  (let* ((p (lem:current-point)))
+    (unless (lem:start-line-p p)
+      (lem:insert-character p #\Newline))
+    (lem:insert-string p "pc := __PC__;")
+    (lem:insert-character p #\Newline)))
+
+(define-key *phaverlite-mode-keymap* "C-c C-d" 'phaverlite-insert-pc-template)

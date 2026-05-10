@@ -4,10 +4,6 @@ A small, project-local IDE for editing and running [PHAVerLite][phaverlite]
 hybrid-automaton models (`.pha` files), built on the
 [lem][lem] editor and Common Lisp.
 
-It wraps the existing `phaverlite` CLI workflow — model edit → run →
-inspect output → maybe sweep a parameter → maybe plot the reachable
-set — in an interactive editor with a small custom Language Server.
-
 [phaverlite]: https://www.cs.unipr.it/~zaffanella/PPLite/PHAVerLite
 [lem]: https://github.com/lem-project/lem
 
@@ -95,11 +91,12 @@ unless noted. Most follow lem's `C-c <X>` convention.
 
 ### PC sweep
 
-| Key       | Command                       | What it does                                            |
-|-----------|-------------------------------|---------------------------------------------------------|
-| `C-c C-s` | `phaverlite-sweep-buffer`     | start a sweep on the current buffer                     |
-| `C-c C-n` | `phaverlite-sweep-skip`       | skip the current pc value, mark its row, advance        |
-| `C-c C-k` | `phaverlite-sweep-cancel`     | cancel the entire sweep                                 |
+| Key       | Command                            | What it does                                            |
+|-----------|------------------------------------|---------------------------------------------------------|
+| `C-c C-d` | `phaverlite-insert-pc-template`    | insert `pc := __PC__;` (the marker sweep looks for)     |
+| `C-c C-s` | `phaverlite-sweep-buffer`          | start a sweep on the current buffer                     |
+| `C-c C-n` | `phaverlite-sweep-skip`            | skip the current pc value, mark its row, advance        |
+| `C-c C-k` | `phaverlite-sweep-cancel`          | cancel the entire sweep                                 |
 
 In the `*phaverlite-sweep*` results buffer:
 

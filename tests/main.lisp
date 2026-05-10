@@ -151,6 +151,33 @@
         (ok (search (format nil "FAKE OUTPUT ~a" resolved-path) text))
         (ok (search "---- exit: 0" text))))))
 
+(deftest insert-pc-template
+  (testing "inserts on its own line when point is mid-line"
+    (let ((buf (lem:make-buffer "*tmp-pc-insert-mid*" :temporary t)))
+      (unwind-protect
+           (progn
+             (lem:insert-string (lem:buffer-point buf) "automaton h end")
+             (lem:with-current-buffer buf
+               (phaverlite-mode/commands:phaverlite-insert-pc-template))
+             (let ((text (lem:points-to-string
+                          (lem:buffer-start-point buf)
+                          (lem:buffer-end-point buf))))
+               (ok (search "automaton h end" text))
+               (ok (search (format nil "~%pc := __PC__;~%") text))))
+        (lem:delete-buffer buf))))
+  (testing "inserts cleanly on a fresh empty line"
+    (let ((buf (lem:make-buffer "*tmp-pc-insert-empty*" :temporary t)))
+      (unwind-protect
+           (progn
+             (lem:with-current-buffer buf
+               (phaverlite-mode/commands:phaverlite-insert-pc-template))
+             (let ((text (lem:points-to-string
+                          (lem:buffer-start-point buf)
+                          (lem:buffer-end-point buf))))
+               (ok (string= "pc := __PC__;
+" text))))
+        (lem:delete-buffer buf)))))
+
 (deftest sweep-parse
   (testing "'bad is reachable' → :reachable"
     (ok (eq :reachable
