@@ -4,6 +4,13 @@ A small, project-local IDE for editing and running [PHAVerLite][phaverlite]
 hybrid-automaton models (`.pha` files), built on the
 [lem][lem] editor and Common Lisp.
 
+> ⚠️ **Works on my machine — installation is unsupported.**
+> This is a research/coursework prototype. It has only been built
+> and run on the author's macOS Apple-Silicon setup with a specific
+> SBCL and a specific pinned `lem` revision. Other platforms,
+> different SBCL versions, or different compiler toolchains may or
+> may not work.
+
 [phaverlite]: https://www.cs.unipr.it/~zaffanella/PPLite/PHAVerLite
 [lem]: https://github.com/lem-project/lem
 
@@ -28,8 +35,6 @@ hybrid-automaton models (`.pha` files), built on the
   - Kind-aware completion (PHAVer keywords + symbols scanned from the
     open buffer; dot-completion for `automaton.method` and
     `region.print`).
-  - Hover (proof-of-life "PHAVerLite LSP: it's alive" — placeholder
-    for richer keyword docs).
 
 Everything runs from one `bin/phaverlite-ide` launcher and stays
 inside this repo — uninstall is `rm -rf` the directory.
