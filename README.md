@@ -29,13 +29,16 @@ Syntax-aware editing for the PHAVer modeling language
 (`automaton … end`, `loc l: while … wait { … } when … sync … do { … }
 goto …;`, top-level `pc := …`, region builders). Newlines auto-indent, commenting, etc...
 
-Indent on Return:
-
-<img src="docs/media/feature_indentation.gif" alt="Indent on Return" height="600">
-
-Comment / uncomment a region:
-
-<img src="docs/media/feature_commenting.gif" alt="Comment / uncomment a region" height="600">
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/feature_indentation.gif" alt="Indent on Return" height="300"></td>
+    <td align="center"><img src="docs/media/feature_commenting.gif" alt="Comment / uncomment a region" height="300"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Indent on Return</sub></td>
+    <td align="center"><sub>Comment / uncomment a region</sub></td>
+  </tr>
+</table>
 
 
 ### PC sweep, in-buffer
