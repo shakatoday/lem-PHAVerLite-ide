@@ -4,8 +4,7 @@
 
 (defsystem "phaverlite-mode-lsp"
   :description "lem-lsp-mode glue for phaverlite-mode."
-  :depends-on ("phaverlite-mode" "lem-lsp-mode" "alexandria")
+  :depends-on ("phaverlite-mode" "lem-lsp-mode")
   :pathname "src-lsp"
   :serial t
-  :components ((:file "spec")
-               (:file "debug-trace")))
+  :components ((:file "spec")))

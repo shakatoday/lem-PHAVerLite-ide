@@ -11,8 +11,7 @@
                "babel")
   :pathname "lsp"
   :serial t
-  :components ((:file "parser")
-               (:file "symbols")
+  :components ((:file "symbols")
                (:file "completion")
                (:file "server")
                (:file "main")))

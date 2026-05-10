@@ -1,10 +1,7 @@
 ;;;; lsp/server.lisp — JSON-RPC handlers + run-server.
 ;;;;
-;;;; Scope: completion ONLY. Diagnostics (publishDiagnostics) were
-;;;; dropped from this prototype after lem-lsp-mode's typed parsing of
-;;;; our publishDiagnostics notification proved hard to land cleanly
-;;;; without modifying lem itself. The structural parser still loads
-;;;; (and is unit-tested), but no diagnostics are sent over the wire.
+;;;; Scope: hover (proof of life) + completion. Diagnostics are out of
+;;;; scope for this prototype.
 
 (defpackage #:phaverlite-lsp/server
   (:use #:cl)
@@ -14,17 +11,6 @@
                 #:complete-at)
   (:export #:run-server))
 (in-package #:phaverlite-lsp/server)
-
-;;; --- temporary diagnostic log (writes to var/log/lsp-trace.log) ---------
-;;; Remove once completion is verified working in lem.
-
-(defvar *log-stream* nil)
-
-(defun log-line (fmt &rest args)
-  (when *log-stream*
-    (apply #'format *log-stream* fmt args)
-    (terpri *log-stream*)
-    (force-output *log-stream*)))
 
 ;;; --- document store ----------------------------------------------------
 
@@ -55,7 +41,7 @@
     h))
 
 (defun line-character-to-offset (text line character)
-  "LSP positions are 0-based (line, character). Convert to a byte offset
+  "LSP positions are 0-based (line, character). Convert to a char offset
    in TEXT. Clamp to [0, length)."
   (let ((offset 0)
         (current-line 0)
@@ -73,16 +59,13 @@
     (error () '())))
 
 ;;; --- handlers ----------------------------------------------------------
-;;; Every handler returns a hash-table (encoded as a JSON object), nil
-;;; (notifications), or :null. SBCL's debugger is disabled in run-server
-;;; so any uncaught condition exits cleanly to stderr instead of hanging.
+;;; Every handler returns a hash-table (encoded as a JSON object) or nil
+;;; (for notifications). SBCL's debugger is disabled in run-server, so
+;;; any uncaught condition exits the process to stderr instead of writing
+;;; debugger prompts onto the JSON-RPC stream.
 
 (defun handle-initialize (server params)
   (declare (ignore server params))
-  (log-line "handle-initialize")
-  ;; Advertise completion only — no diagnosticProvider (we don't publish
-  ;; diagnostics in this prototype) and no fancy fields. Minimal shape that
-  ;; lem-lsp-mode's typed parser is willing to accept on this lem version.
   (ht "capabilities"
       (ht "textDocumentSync" 1
           "hoverProvider" (ht)
@@ -91,7 +74,6 @@
 
 (defun handle-initialized (server params)
   (declare (ignore server params))
-  (log-line "handle-initialized")
   nil)
 
 (defun handle-shutdown (server params)
@@ -108,7 +90,6 @@
          (uri (get-field td "uri"))
          (text (get-field td "text"))
          (version (get-field td "version")))
-    (log-line "handle-did-open uri=~a text-len=~a" uri (length text))
     (setf (gethash uri *documents*)
           (make-document :uri uri :text text :version version
                          :symbols (safe-scan-symbols text))))
@@ -167,13 +148,7 @@
   nil)
 
 (defun handle-hover (server params)
-  (declare (ignore server))
-  (let* ((td (get-field params "textDocument"))
-         (uri (get-field td "uri"))
-         (pos (get-field params "position"))
-         (line (get-field pos "line"))
-         (character (get-field pos "character")))
-    (log-line "handle-hover uri=~a line=~a char=~a" uri line character))
+  (declare (ignore server params))
   (ht "contents" "PHAVerLite LSP: it's alive"))
 
 (defun handle-completion (server params)
@@ -185,67 +160,69 @@
          (character (get-field pos "character"))
          (doc (gethash uri *documents*))
          (items (vector)))
-    (log-line "handle-completion uri=~a line=~a char=~a doc?=~a"
-              uri line character (not (null doc)))
     (when doc
       (let* ((offset (line-character-to-offset (document-text doc) line character))
              (completions (handler-case
                               (complete-at (document-text doc) offset
                                            (document-symbols doc))
                             (error () '()))))
-        (log-line "handle-completion offset=~a returning ~a items"
-                  offset (length completions))
         (setf items
               (coerce
                (mapcar (lambda (label)
                          (ht "label" label "kind" 14))   ; 14 = Keyword
                        completions)
                'vector))))
-    ;; Send the full LSP CompletionList shape: isIncomplete is REQUIRED per
-    ;; the protocol; if we omit it, lem's typed parser leaves the slot
-    ;; unbound and downstream code that reads it without unbound-slot
-    ;; handling crashes (manifests as "<HASH-TABLE> is not a NIL").
-    ;; Use vector for items so yason emits `[]` even when empty.
+    ;; CompletionList: isIncomplete is required per LSP — omitting it leaves
+    ;; lem's typed completion-list slot unbound and downstream code crashes
+    ;; with "<HASH-TABLE> is not a NIL". yason:false symbol so it serializes
+    ;; as JSON `false` (yason encodes Lisp NIL as `null`, not `false`).
     (ht "isIncomplete" 'yason:false "items" items)))
+
+;;; --- byte-aware stdio transport patch ----------------------------------
+;;; Override jsonrpc/transport/stdio's receive-message-using-transport
+;;; with a BYTE-aware read. Upstream's read-message uses (read-sequence
+;;; body stream) which reads CHARS, but LSP's Content-Length is BYTES.
+;;; With any multi-byte UTF-8 in the body, the char-based read overshoots
+;;; the body's byte boundary, corrupting framing for the next message
+;;; and silently killing the server. Same patch lem applies for its own
+;;; LSP frontend (.lem-ref/frontends/server/jsonrpc-stdio-patch.lisp).
+;;;
+;;; Top-level (not inside run-server) so the defmethod is registered
+;;; once at image build time — avoids "redefining" warnings on each
+;;; server start.
+
+(defmethod jsonrpc/transport/interface:receive-message-using-transport
+    ((transport jsonrpc/transport/stdio:stdio-transport) connection)
+  (let* ((stream (jsonrpc/connection:connection-stream connection))
+         ;; read-headers errors with end-of-file when lem closes the pipe
+         ;; on shutdown — that's the normal exit path, return nil so the
+         ;; reading loop terminates quietly instead of leaving a backtrace.
+         (headers (handler-case (jsonrpc/request-response::read-headers stream)
+                    (end-of-file () nil)))
+         (length (and headers
+                      (ignore-errors
+                       (parse-integer (gethash "content-length" headers))))))
+    (when length
+      (handler-case
+          (let ((body
+                  (with-output-to-string (out)
+                    (loop
+                      :for c := (read-char stream)
+                      :do (write-char c out)
+                          (decf length (babel:string-size-in-octets (string c)))
+                          (when (<= length 0) (return))))))
+            (jsonrpc/request-response:parse-message body))
+        (end-of-file () nil)))))
 
 ;;; --- entry point -------------------------------------------------------
 
 (defun run-server ()
   "Start the LSP server on stdio. Blocks on the reading loop until
-   the exit handler calls (uiop:quit 0)."
-  ;; CRITICAL: disable SBCL's interactive debugger. If a handler raises
-  ;; an uncaught condition, the debugger prompt would write to stdout
-  ;; (the LSP transport), corrupting the JSON-RPC stream and causing
-  ;; the lem client to hang waiting for a valid response.
+   the exit handler calls (uiop:quit 0) or stdin reaches EOF."
+  ;; Disable SBCL's interactive debugger. If a handler raises an uncaught
+  ;; condition, the debugger prompt would otherwise write to stdout (the
+  ;; LSP transport), corrupting the JSON-RPC stream.
   #+sbcl (sb-ext:disable-debugger)
-  (ensure-directories-exist "var/log/")
-  (setf *log-stream*
-        (open "var/log/lsp-trace.log"
-              :direction :output
-              :if-exists :supersede
-              :if-does-not-exist :create))
-  ;; Override jsonrpc/transport/stdio's receive-message-using-transport
-  ;; with a BYTE-aware read. Upstream's read-message uses (read-sequence body
-  ;; stream) which reads CHARS, but LSP's Content-Length is BYTES. With any
-  ;; multi-byte UTF-8 in the body, the char-based read overshoots the body
-  ;; byte boundary and corrupts framing for the next message, silently
-  ;; killing the server. Same patch lem applies for its own LSP frontend
-  ;; (.lem-ref/frontends/server/jsonrpc-stdio-patch.lisp).
-  (defmethod jsonrpc/transport/interface:receive-message-using-transport
-      ((transport jsonrpc/transport/stdio:stdio-transport) connection)
-    (let* ((stream (jsonrpc/connection:connection-stream connection))
-           (headers (jsonrpc/request-response::read-headers stream))
-           (length (ignore-errors
-                    (parse-integer (gethash "content-length" headers)))))
-      (when length
-        (let ((body
-                (with-output-to-string (out)
-                  (loop
-                    :for c := (read-char stream)
-                    :do (write-char c out)
-                        (decf length (babel:string-size-in-octets (string c)))
-                        (when (<= length 0) (return))))))
-          (jsonrpc/request-response:parse-message body)))))
   (let ((server (jsonrpc:make-server)))
     (jsonrpc:expose server "initialize"              (lambda (p) (handle-initialize server p)))
     (jsonrpc:expose server "initialized"             (lambda (p) (handle-initialized server p)))
@@ -257,18 +234,4 @@
     (jsonrpc:expose server "textDocument/didClose"   (lambda (p) (handle-did-close server p)))
     (jsonrpc:expose server "textDocument/hover"      (lambda (p) (handle-hover server p)))
     (jsonrpc:expose server "textDocument/completion" (lambda (p) (handle-completion server p)))
-    ;; server-listen runs the reading loop in THIS thread (per stdio
-    ;; transport's start-server impl), spawning a separate processing
-    ;; thread. It blocks until stdin EOF; no extra (loop (sleep 1)) needed.
-    (handler-case
-        (jsonrpc:server-listen server :mode :stdio)
-      (end-of-file ()
-        (log-line "server-listen returned: END-OF-FILE on stdin")
-        nil)
-      (error (e)
-        (log-line "server-listen returned: ERROR ~A: ~A" (type-of e) e)
-        nil)
-      (:no-error (&rest values)
-        (declare (ignore values))
-        (log-line "server-listen returned cleanly (no error)")
-        nil))))
+    (jsonrpc:server-listen server :mode :stdio)))

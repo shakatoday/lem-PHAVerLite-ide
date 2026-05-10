@@ -34,47 +34,6 @@
 (lem:add-hook lem:*after-init-hook*
               (lambda () (lem:message *phaverlite-ide-banner*)))
 
-;; --- temporary LSP capability debug command --------------------------------
-;; M-x phaverlite-lsp-debug-caps prints, for the current buffer's LSP
-;; workspace: whether server-capabilities is bound, whether
-;; completion-provider slot is bound on it, and the trigger-characters.
-;; Output goes to *Messages*. Remove once completion is verified working.
-(lem:define-command phaverlite-lsp-debug-caps () ()
-  (let* ((buffer (lem:current-buffer))
-         (workspace
-           (handler-case
-               (lem-lsp-mode/lsp-mode::buffer-workspace buffer nil)
-             (error (e) (lem:message "buffer-workspace ERROR: ~A" e) nil))))
-    (cond
-      ((null workspace)
-       (lem:message "no workspace for buffer (language-id=~A)"
-                    (lem-lsp-mode/lsp-mode::buffer-language-id buffer)))
-      (t
-       (let ((caps (handler-case
-                       (lem-lsp-mode/lsp-mode::workspace-server-capabilities workspace)
-                     (unbound-slot () :unbound)
-                     (error (e) (format nil "ERR: ~A" e)))))
-         (cond
-           ((eq caps :unbound)
-            (lem:message "workspace-server-capabilities slot UNBOUND"))
-           ((stringp caps)
-            (lem:message "caps access errored: ~A" caps))
-           (t
-            (let ((cp-bound
-                    (slot-boundp caps 'lem-lsp-base/protocol-3-17::completion-provider)))
-              (lem:message "caps class=~A completion-provider bound?=~A"
-                           (class-name (class-of caps))
-                           cp-bound)
-              (when cp-bound
-                (let* ((cp (lsp:server-capabilities-completion-provider caps))
-                       (tc (handler-case
-                               (lsp:completion-options-trigger-characters cp)
-                             (unbound-slot () :unbound))))
-                  (lem:message "  cp class=~A trigger-chars=~A (type=~A)"
-                               (class-name (class-of cp))
-                               tc (type-of tc))))))))))))
-  nil)
-
 (lem:lem)
 
 ;; (lem:lem) returns when the user quits lem; without this, SBCL would drop
