@@ -7,7 +7,8 @@
   :description "LSP server for the PHAVer (.pha) language."
   :depends-on ("jsonrpc"
                "jsonrpc/transport/stdio"
-               "cl-ppcre")
+               "cl-ppcre"
+               "babel")
   :pathname "lsp"
   :serial t
   :components ((:file "parser")

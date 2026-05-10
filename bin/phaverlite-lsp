@@ -23,8 +23,11 @@ if [[ ! -f "$REPO/var/lsp.core" ]]; then
 fi
 
 cd "$REPO"
+mkdir -p "$REPO/var/log"
+# Send stderr to a file so SBCL crash messages aren't swallowed by lem.
 exec sbcl \
   --noinform \
   --core "$REPO/var/lsp.core" \
   --no-userinit \
-  --no-sysinit
+  --no-sysinit \
+  2>>"$REPO/var/log/lsp-stderr.log"
