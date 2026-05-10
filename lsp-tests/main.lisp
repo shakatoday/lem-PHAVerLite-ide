@@ -6,10 +6,37 @@
 
 (deftest scaffolding-loads
   (testing "all phaverlite-lsp sub-packages exist"
+    (ok (find-package :phaverlite-lsp/parser))
     (ok (find-package :phaverlite-lsp/symbols))
     (ok (find-package :phaverlite-lsp/completion))
     (ok (find-package :phaverlite-lsp/server))
     (ok (find-package :phaverlite-lsp/main))))
+
+(deftest lsp-parser
+  (testing "empty text → no diagnostics"
+    (ok (null (phaverlite-lsp/parser:parse-document ""))))
+  (testing "clean automaton X end → no diagnostics"
+    (ok (null (phaverlite-lsp/parser:parse-document "automaton heater
+end"))))
+  (testing "automaton without end → one diagnostic mentioning 'end'"
+    (let ((diags (phaverlite-lsp/parser:parse-document "automaton heater
+contr_var: t;")))
+      (ok (= 1 (length diags)))
+      (let ((d (first diags)))
+        (ok (eq :error (phaverlite-lsp/parser:diagnostic-severity d)))
+        (ok (search "end" (phaverlite-lsp/parser:diagnostic-message d))))))
+  (testing "orphan end → diagnostic mentioning 'orphan' or 'no automaton'"
+    (let ((diags (phaverlite-lsp/parser:parse-document "end")))
+      (ok (= 1 (length diags)))
+      (let ((msg (phaverlite-lsp/parser:diagnostic-message (first diags))))
+        (ok (or (search "orphan" msg) (search "no automaton" msg))))))
+  (testing "unmatched { → one diagnostic at the open brace"
+    (let ((diags (phaverlite-lsp/parser:parse-document "automaton x
+loc l: wait { x' == 1
+end")))
+      (ok (= 1 (length diags)))
+      (let ((msg (phaverlite-lsp/parser:diagnostic-message (first diags))))
+        (ok (or (search "{" msg) (search "brace" msg)))))))
 
 (defun symbols-of-kind (text kind)
   "Helper: return list of symbol-info names of KIND from scanning TEXT."

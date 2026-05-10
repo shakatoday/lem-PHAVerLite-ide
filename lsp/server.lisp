@@ -9,6 +9,14 @@
                 #:scan-symbols)
   (:import-from #:phaverlite-lsp/completion
                 #:complete-at)
+  (:import-from #:phaverlite-lsp/parser
+                #:parse-document
+                #:diagnostic-start-line
+                #:diagnostic-start-col
+                #:diagnostic-end-line
+                #:diagnostic-end-col
+                #:diagnostic-severity
+                #:diagnostic-message)
   (:export #:run-server))
 (in-package #:phaverlite-lsp/server)
 
@@ -58,6 +66,40 @@
   (handler-case (scan-symbols (or text ""))
     (error () '())))
 
+;;; --- diagnostics -------------------------------------------------------
+
+(defun severity-to-lsp (sev)
+  "Map :error/:warning to LSP DiagnosticSeverity (1=Error, 2=Warning)."
+  (case sev
+    (:error 1)
+    (:warning 2)
+    (t 3)))                             ; Info fallback
+
+(defun diagnostic-to-lsp (d)
+  (ht "range" (ht "start" (ht "line" (diagnostic-start-line d)
+                              "character" (diagnostic-start-col d))
+                  "end"   (ht "line" (diagnostic-end-line d)
+                              "character" (diagnostic-end-col d)))
+      "severity" (severity-to-lsp (diagnostic-severity d))
+      "source" "phaverlite-lsp"
+      "message" (diagnostic-message d)))
+
+(defun publish-diagnostics (server uri text)
+  "Parse TEXT, send a textDocument/publishDiagnostics notification.
+   Always sends, even with an empty diagnostics array — that's how the
+   client clears stale squiggles after a fix. Vector (not list) so
+   yason emits `[]` for the empty case rather than `null`."
+  (let* ((diags (handler-case (parse-document (or text ""))
+                  (error () '())))
+         (items (coerce (mapcar #'diagnostic-to-lsp diags) 'vector)))
+    (handler-case
+        (jsonrpc:notify server
+                        "textDocument/publishDiagnostics"
+                        (ht "uri" uri "diagnostics" items))
+      ;; If we're called outside a handler (no *connection*), notify errors;
+      ;; that's fine for tests / direct-driver flows where there's no client.
+      (error () nil))))
+
 ;;; --- handlers ----------------------------------------------------------
 ;;; Every handler returns a hash-table (encoded as a JSON object) or nil
 ;;; (for notifications). SBCL's debugger is disabled in run-server, so
@@ -85,14 +127,14 @@
   (uiop:quit 0))
 
 (defun handle-did-open (server params)
-  (declare (ignore server))
   (let* ((td (get-field params "textDocument"))
          (uri (get-field td "uri"))
          (text (get-field td "text"))
          (version (get-field td "version")))
     (setf (gethash uri *documents*)
           (make-document :uri uri :text text :version version
-                         :symbols (safe-scan-symbols text))))
+                         :symbols (safe-scan-symbols text)))
+    (publish-diagnostics server uri text))
   nil)
 
 (defun apply-incremental-change (text change)
@@ -112,7 +154,6 @@
                  (subseq text end-offset))))
 
 (defun handle-did-change (server params)
-  (declare (ignore server))
   ;; Lem's lsp-mode hard-codes incremental contentChange events regardless
   ;; of the sync mode we advertise — every keystroke arrives as one event
   ;; with `range` + small `text`. We must apply each event to the stored
@@ -134,7 +175,8 @@
                         (setf text (or (gethash "text" change) "")))))
                 changes))
         (setf (document-text doc) text
-              (document-symbols doc) (safe-scan-symbols text)))))
+              (document-symbols doc) (safe-scan-symbols text))
+        (publish-diagnostics server uri text))))
   nil)
 
 (defun handle-did-save (server params)
