@@ -4,6 +4,10 @@ A small, project-local IDE for editing and running [PHAVerLite][phaverlite]
 hybrid-automaton models (`.pha` files), built on the
 [lem][lem] editor and Common Lisp.
 
+<p align="center">
+  <img src="docs/media/feature_sweep_pc.gif" alt="PC sweep demo" height="500">
+</p>
+
 > ⚠️ **Works on my machine — installation is unsupported.**
 > This is a research/coursework prototype. It has only been built
 > and run on the author's macOS Apple-Silicon setup with a specific
