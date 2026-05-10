@@ -151,6 +151,24 @@
         (ok (search (format nil "FAKE OUTPUT ~a" resolved-path) text))
         (ok (search "---- exit: 0" text))))))
 
+(deftest run-buffer-refuses-pc-template
+  (testing "buffer with __PC__ → no run, helpful message"
+    (let* ((path (merge-pathnames
+                  (format nil "phaverlite-pcrefuse-~a.pha" (get-universal-time))
+                  (uiop:temporary-directory))))
+      (with-open-file (s path :direction :output :if-exists :supersede)
+        (write-string "automaton sys end
+pc := __PC__;" s))
+      (let ((buf (lem:find-file-buffer path)))
+        (multiple-value-bind (install collect) (stub-message-collector)
+          (funcall install)
+          (phaverlite-mode/commands:phaverlite-run-buffer buf)
+          (let ((messages (funcall collect)))
+            (ok (some (lambda (m) (search "__PC__" m)) messages)
+                "message mentions __PC__")
+            (ok (some (lambda (m) (search "C-c C-s" m)) messages)
+                "message points user at sweep")))))))
+
 (deftest insert-pc-template
   (testing "inserts on its own line when point is mid-line"
     (let ((buf (lem:make-buffer "*tmp-pc-insert-mid*" :temporary t)))

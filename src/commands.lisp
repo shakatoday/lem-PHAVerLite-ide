@@ -53,7 +53,12 @@
         (let ((stream (uiop:process-info-output proc)))
           (loop for line = (read-line stream nil nil)
                 while line
-                do (write-output-line output-buf line)))
+                do (write-output-line output-buf line)
+                   ;; Force redraw after every line so output appears
+                   ;; live rather than appearing all at once after the
+                   ;; child exits. ignore-errors for the rove test env
+                   ;; which has no live frontend implementation.
+                   (ignore-errors (lem:redraw-display))))
         (let ((exit-code (uiop:wait-process proc)))
           (write-output-line output-buf
                              (format nil "---- exit: ~a" exit-code)))
@@ -62,14 +67,28 @@
       (write-output-line output-buf (format nil "---- error: ~a" e))
       nil)))
 
+(defun buffer-has-pc-template-p (buf)
+  "True iff BUF's text contains the `__PC__` placeholder. Such buffers
+   aren't runnable as-is; the sweep workflow materializes a concrete
+   pc value into each per-row file before launching phaverlite."
+  (let ((text (lem:points-to-string
+               (lem:buffer-start-point buf)
+               (lem:buffer-end-point buf))))
+    (search "__PC__" text)))
+
 (define-command phaverlite-run-buffer (&optional buffer) ()
   "Run `phaverlite` on the file backing BUFFER (or the current buffer).
-   See command's docstring at the top of commands.lisp for the contract."
+   Refuses to run if the buffer still contains the `__PC__` template
+   marker — that's a sweep template, not a runnable model. See
+   command's docstring at the top of commands.lisp for the contract."
   (let* ((buf (or buffer (current-buffer)))
          (path (lem:buffer-filename buf)))
     (cond
       ((null path)
        (lem:message "Buffer not visiting a file"))
+      ((buffer-has-pc-template-p buf)
+       (lem:message
+        "Buffer contains __PC__ — use C-c C-s to sweep, or replace __PC__ with a value to run."))
       ((and (lem:buffer-modified-p buf)
             (not (lem:prompt-for-y-or-n-p
                   "Buffer modified. Save and run phaverlite?")))
@@ -82,6 +101,12 @@
          ;; pop-to-buffer requires a live frontend implementation; in the
          ;; rove test environment there is none, so we tolerate failure.
          (ignore-errors (lem:pop-to-buffer out))
+         ;; launch-phaverlite blocks the editor thread on its read-line
+         ;; loop until phaverlite exits. Force a redraw NOW so the y/n
+         ;; prompt clears and the *phaverlite-output* popup is visible
+         ;; before we start blocking — otherwise both don't repaint until
+         ;; the user presses a key after the run finishes.
+         (ignore-errors (lem:redraw-display))
          (launch-phaverlite path out))))))
 
 (define-key *phaverlite-mode-keymap* "C-c C-c" 'phaverlite-run-buffer)
