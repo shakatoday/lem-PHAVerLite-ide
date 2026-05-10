@@ -31,8 +31,8 @@ goto …;`, top-level `pc := …`, region builders). Newlines auto-indent, comme
 
 <table>
   <tr>
-    <td align="center"><img src="docs/media/feature_indentation.gif" alt="Indentation" height="450"></td>
-    <td align="center"><img src="docs/media/feature_commenting.gif" alt="Comment / uncomment a region" height="450"></td>
+    <td align="center"><img src="docs/media/feature_indentation.gif" alt="Indentation" width="450"></td>
+    <td align="center"><img src="docs/media/feature_commenting.gif" alt="Comment / uncomment a region" width="450"></td>
   </tr>
   <tr>
     <td align="center"><sub>Indentation</sub></td>
